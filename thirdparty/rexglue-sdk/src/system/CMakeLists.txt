@@ -41,6 +41,7 @@ set(REXSYSTEM_SOURCES
     mmio_handler.cpp
     map_parser.cpp
     module.cpp
+    aot_guest_executor.cpp
     function_dispatcher.cpp
     thread.cpp
     thread_state.cpp

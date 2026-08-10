@@ -36,3 +36,26 @@ catch_discover_tests(unit_tests
         LABELS "unit"
         TIMEOUT 60
 )
+
+# Keep execution-contract tests independent of the kernel/system static-library
+# cycle so they can validate the adapter in isolation.
+add_executable(executor_unit_tests
+    system/aot_guest_executor_test.cpp
+    ${PROJECT_SOURCE_DIR}/src/system/aot_guest_executor.cpp
+)
+target_include_directories(executor_unit_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+)
+target_link_libraries(executor_unit_tests PRIVATE
+    rexcore
+    Catch2::Catch2WithMain
+)
+set_target_properties(executor_unit_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/bin
+)
+catch_discover_tests(executor_unit_tests
+    TEST_PREFIX "unit.executor."
+    PROPERTIES
+        LABELS "unit;executor"
+        TIMEOUT 60
+)

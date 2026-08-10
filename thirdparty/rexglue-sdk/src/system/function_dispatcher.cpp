@@ -18,25 +18,27 @@
 #include <rex/logging.h>
 #include <rex/memory.h>
 #include <rex/ppc/context.h>
+#include <rex/system/aot_guest_executor.h>
 #include <rex/system/function_dispatcher.h>
 #include <rex/system/thread_state.h>
 
 namespace rex::runtime {
 
 FunctionDispatcher::FunctionDispatcher(rex::memory::Memory* memory, ExportResolver* export_resolver)
-    : memory_(memory), export_resolver_(export_resolver) {}
+    : FunctionDispatcher(memory, export_resolver, std::make_unique<AotGuestExecutor>()) {}
+
+FunctionDispatcher::FunctionDispatcher(rex::memory::Memory* memory, ExportResolver* export_resolver,
+                                       std::unique_ptr<GuestExecutor> guest_executor)
+    : memory_(memory),
+      export_resolver_(export_resolver),
+      guest_executor_(std::move(guest_executor)) {
+  assert_not_null(guest_executor_.get());
+}
 
 FunctionDispatcher::~FunctionDispatcher() = default;
 
 bool FunctionDispatcher::Execute(ThreadState* thread_state, uint32_t address) {
   SCOPE_profile_cpu_f("cpu");
-
-  // rexglue: Look up pre-compiled function
-  auto fn = GetFunction(address);
-  if (!fn) {
-    REXCPU_ERROR("Execute({:08X}): function not in function table", address);
-    return false;
-  }
 
   auto* ctx = thread_state->context();
 
@@ -49,12 +51,16 @@ bool FunctionDispatcher::Execute(ThreadState* thread_state, uint32_t address) {
   uint64_t previous_lr = ctx->lr;
   ctx->lr = 0xBCBCBCBC;
 
-  // NOTE(tomc): rexglue direct function call
-  fn(*ctx, memory_->virtual_membase());
+  const auto result = guest_executor_->Execute(*ctx, memory_->virtual_membase(), address);
 
   ctx->lr = previous_lr;
   ctx->r1.u64 += 64 + 112;
 
+  if (!result.succeeded()) {
+    REXCPU_ERROR("Execute({:08X}): guest executor failed with status {}", address,
+                 static_cast<unsigned>(result.status));
+    return false;
+  }
   return true;
 }
 
@@ -171,19 +177,14 @@ bool FunctionDispatcher::InitializeFunctionTable(uint32_t code_base, uint32_t co
 void FunctionDispatcher::SetFunction(uint32_t guest_address, ::PPCFunc* func) {
   assert_true(function_table_initialized_);
 
-  // Store in C++ map (for FunctionDispatcher::Execute/GetFunction)
-  function_table_[guest_address] = func;
+  guest_executor_->RegisterFunction(guest_address, func);
 
   // Also write to guest memory (for PPC_LOOKUP_FUNC in recompiled code)
   memory_->SetFunction(guest_address, func);
 }
 
 ::PPCFunc* FunctionDispatcher::GetFunction(uint32_t guest_address) {
-  auto it = function_table_.find(guest_address);
-  if (it != function_table_.end()) {
-    return it->second;
-  }
-  return nullptr;
+  return guest_executor_->LookupFunction(guest_address);
 }
 
 uint32_t FunctionDispatcher::AllocateThunk(::PPCFunc* func) {

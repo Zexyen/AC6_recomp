@@ -30,7 +30,7 @@ Users must supply their own legally obtained game files locally.
 | Windows SDK | 10.0.19041+ | D3D12 headers (Windows only) |
 
 > [!NOTE]
-> The Linux preset uses `clang-20` / `clang++-20` directly. Install the versioned binaries via your distro's package manager (`apt install clang-20`) or via the [LLVM APT repository](https://apt.llvm.org).
+> The Linux preset uses `clang` / `clang++`. Install a recent Clang/LLVM release via your distribution's package manager and ensure these executables are on `PATH`.
 
 ---
 
