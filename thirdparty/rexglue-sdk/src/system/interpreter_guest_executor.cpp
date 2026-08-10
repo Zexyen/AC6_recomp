@@ -36,6 +36,12 @@ uint16_t LoadBe16(const uint8_t* address) {
   return std::byteswap(value);
 }
 
+uint64_t LoadBe64(const uint8_t* address) {
+  uint64_t value;
+  std::memcpy(&value, address, sizeof(value));
+  return std::byteswap(value);
+}
+
 void StoreBe32(uint8_t* address, uint32_t value) {
   value = std::byteswap(value);
   std::memcpy(address, &value, sizeof(value));
@@ -44,6 +50,22 @@ void StoreBe32(uint8_t* address, uint32_t value) {
 void StoreBe16(uint8_t* address, uint16_t value) {
   value = std::byteswap(value);
   std::memcpy(address, &value, sizeof(value));
+}
+
+void StoreBe64(uint8_t* address, uint64_t value) {
+  value = std::byteswap(value);
+  std::memcpy(address, &value, sizeof(value));
+}
+
+uint32_t WordMask(uint8_t begin, uint8_t end) {
+  uint32_t mask = 0;
+  for (uint8_t bit = 0; bit < 32; ++bit) {
+    if (begin <= end ? bit >= begin && bit <= end
+                     : bit >= begin || bit <= end) {
+      mask |= uint32_t{1} << (31 - bit);
+    }
+  }
+  return mask;
 }
 
 uint32_t EffectiveAddress(PPCContext& context, const DecodedPpcInstruction& instruction,
@@ -56,6 +78,10 @@ uint32_t EffectiveAddress(PPCContext& context, const DecodedPpcInstruction& inst
 
 void UpdateCr0(PPCContext& context, uint64_t value) {
   context.cr0.compare(static_cast<int64_t>(value), int64_t{0}, context.xer);
+}
+
+void UpdateCr0Word(PPCContext& context, uint32_t value) {
+  context.cr0.compare(static_cast<int32_t>(value), int32_t{0}, context.xer);
 }
 
 PPCCRRegister& CrField(PPCContext& context, uint8_t index) {
@@ -185,6 +211,18 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kLoadDoubleword:
+      case PpcOpcode::kLoadDoublewordUpdate:
+      case PpcOpcode::kLoadDoublewordIndexed: {
+        const bool indexed = instruction.opcode == PpcOpcode::kLoadDoublewordIndexed;
+        const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        Gpr(context, instruction.rt).u64 = LoadBe64(memory_base + address);
+        if (instruction.opcode == PpcOpcode::kLoadDoublewordUpdate) {
+          Gpr(context, instruction.ra).u64 = address;
+        }
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kStoreWord: {
         const uint32_t address = EffectiveAddress(context, instruction, false);
         StoreBe32(memory_base + address, Gpr(context, instruction.rt).u32);
@@ -217,6 +255,18 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         StoreBe16(memory_base + address, Gpr(context, instruction.rt).u16);
         if (instruction.opcode == PpcOpcode::kStoreHalfUpdate) Gpr(context, instruction.ra).u64 = address;
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kStoreDoubleword:
+      case PpcOpcode::kStoreDoublewordUpdate:
+      case PpcOpcode::kStoreDoublewordIndexed: {
+        const bool indexed = instruction.opcode == PpcOpcode::kStoreDoublewordIndexed;
+        const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        StoreBe64(memory_base + address, Gpr(context, instruction.rt).u64);
+        if (instruction.opcode == PpcOpcode::kStoreDoublewordUpdate) {
+          Gpr(context, instruction.ra).u64 = address;
+        }
         pc = next_pc;
         break;
       }
@@ -297,6 +347,32 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
         pc = next_pc;
         break;
+      case PpcOpcode::kRotateLeftWordImmediateAndMask:
+      case PpcOpcode::kRotateLeftWordAndMask: {
+        const uint32_t shift = instruction.opcode == PpcOpcode::kRotateLeftWordAndMask
+                                   ? Gpr(context, instruction.rb).u32 & 31
+                                   : instruction.shift;
+        const uint32_t value = std::rotl(Gpr(context, instruction.rt).u32, shift) &
+                               WordMask(instruction.mask_begin, instruction.mask_end);
+        Gpr(context, instruction.ra).u64 = value;
+        if (instruction.record) UpdateCr0Word(context, value);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kShiftLeftWord:
+      case PpcOpcode::kShiftRightWord: {
+        const uint32_t shift = Gpr(context, instruction.rb).u32 & 63;
+        uint32_t value = 0;
+        if (shift < 32) {
+          value = instruction.opcode == PpcOpcode::kShiftLeftWord
+                      ? Gpr(context, instruction.rt).u32 << shift
+                      : Gpr(context, instruction.rt).u32 >> shift;
+        }
+        Gpr(context, instruction.ra).u64 = value;
+        if (instruction.record) UpdateCr0Word(context, value);
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kMoveFromSpr: {
         uint64_t value = 0;
         if (!ReadSpr(context, instruction.spr, value)) {

@@ -28,6 +28,19 @@ constexpr uint32_t BForm(uint32_t bo, uint32_t bi, int16_t displacement) {
          (static_cast<uint16_t>(displacement) & 0xFFFC);
 }
 
+constexpr uint32_t DSForm(uint32_t primary, uint32_t rt, uint32_t ra,
+                          int16_t displacement, uint32_t xo = 0) {
+  return (primary << 26) | (rt << 21) | (ra << 16) |
+         (static_cast<uint16_t>(displacement) & 0xFFFC) | xo;
+}
+
+constexpr uint32_t MForm(uint32_t primary, uint32_t rs, uint32_t ra,
+                         uint32_t sh_rb, uint32_t mb, uint32_t me,
+                         bool record = false) {
+  return (primary << 26) | (rs << 21) | (ra << 16) | (sh_rb << 11) |
+         (mb << 6) | (me << 1) | static_cast<uint32_t>(record);
+}
+
 void StoreInstruction(uint8_t* memory, uint32_t address, uint32_t instruction) {
   instruction = std::byteswap(instruction);
   std::memcpy(memory + address, &instruction, sizeof(instruction));
@@ -230,4 +243,78 @@ TEST_CASE("PPC interpreter executes register arithmetic and record forms",
   REQUIRE(context.r6.u64 == 5);
   REQUIRE(context.r7.s64 == -5);
   REQUIRE(context.cr0.lt == 1);
+}
+
+TEST_CASE("Runtime PPC decoder extracts DS-form and rotate-mask fields",
+          "[system][interpreter]") {
+  const auto load = rex::runtime::DecodePpcInstruction(DSForm(58, 3, 1, -16, 1));
+  REQUIRE(load.opcode == rex::runtime::PpcOpcode::kLoadDoublewordUpdate);
+  REQUIRE(load.rt == 3);
+  REQUIRE(load.ra == 1);
+  REQUIRE(load.immediate == -16);
+
+  const auto rotate = rex::runtime::DecodePpcInstruction(MForm(21, 4, 5, 7, 8, 23, true));
+  REQUIRE(rotate.opcode == rex::runtime::PpcOpcode::kRotateLeftWordImmediateAndMask);
+  REQUIRE(rotate.shift == 7);
+  REQUIRE(rotate.mask_begin == 8);
+  REQUIRE(rotate.mask_end == 23);
+  REQUIRE(rotate.record);
+}
+
+TEST_CASE("PPC interpreter handles doubleword stack and indexed memory operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 512> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  // stdu r1,-16(r1); std r3,8(r1); ld r4,8(r1); stdx r3,r1,r5; ldx r6,r1,r5
+  StoreInstruction(memory.data(), 0, DSForm(62, 1, 1, -16, 1));
+  StoreInstruction(memory.data(), 4, DSForm(62, 3, 1, 8));
+  StoreInstruction(memory.data(), 8, DSForm(58, 4, 1, 8));
+  StoreInstruction(memory.data(), 12, XForm(3, 1, 5, 149));
+  StoreInstruction(memory.data(), 16, XForm(6, 1, 5, 21));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r1.u64 = 0x120;
+  context.r3.u64 = 0x0123456789ABCDEF;
+  context.r5.u64 = 0x18;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r1.u64 == 0x110);
+  REQUIRE(context.r4.u64 == 0x0123456789ABCDEF);
+  REQUIRE(context.r6.u64 == 0x0123456789ABCDEF);
+  REQUIRE(memory[0x110] == 0x00);
+  REQUIRE(memory[0x117] == 0x20);
+  REQUIRE(memory[0x118] == 0x01);
+  REQUIRE(memory[0x11F] == 0xEF);
+}
+
+TEST_CASE("PPC interpreter executes word rotate mask and logical shifts",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(5);
+
+  // rlwinm r5,r3,8,8,15; rlwnm r6,r3,r4,0,31; slw. r7,r8,r4; srw r9,r3,r10
+  StoreInstruction(memory.data(), 0, MForm(21, 3, 5, 8, 8, 15));
+  StoreInstruction(memory.data(), 4, MForm(23, 3, 6, 4, 0, 31));
+  StoreInstruction(memory.data(), 8, XForm(8, 7, 4, 24) | 1u);
+  StoreInstruction(memory.data(), 12, XForm(3, 9, 10, 536));
+  StoreInstruction(memory.data(), 16, XForm(3, 11, 10, 24));
+  context.r3.u64 = 0x12345678;
+  context.r4.u64 = 4;
+  context.r8.u64 = 0x08000000;
+  context.r10.u64 = 32;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.status == rex::runtime::GuestExecutionStatus::kStopped);
+  REQUIRE(context.r5.u64 == 0x00560000);
+  REQUIRE(context.r6.u64 == 0x23456781);
+  REQUIRE(context.r7.u64 == 0x80000000);
+  REQUIRE(context.cr0.lt == 1);
+  REQUIRE(context.r9.u64 == 0);
+  REQUIRE(context.r11.u64 == 0);
 }

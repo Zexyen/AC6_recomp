@@ -34,6 +34,19 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.opcode = PpcOpcode::kXorImmediate;
       result.immediate = static_cast<int32_t>(raw & 0xFFFF);
       break;
+    case 21:
+      result.opcode = PpcOpcode::kRotateLeftWordImmediateAndMask;
+      result.shift = static_cast<uint8_t>((raw >> 11) & 31);
+      result.mask_begin = static_cast<uint8_t>((raw >> 6) & 31);
+      result.mask_end = static_cast<uint8_t>((raw >> 1) & 31);
+      result.record = (raw & 1) != 0;
+      break;
+    case 23:
+      result.opcode = PpcOpcode::kRotateLeftWordAndMask;
+      result.mask_begin = static_cast<uint8_t>((raw >> 6) & 31);
+      result.mask_end = static_cast<uint8_t>((raw >> 1) & 31);
+      result.record = (raw & 1) != 0;
+      break;
     case 32:
       result.opcode = PpcOpcode::kLoadWord;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
@@ -86,6 +99,22 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.opcode = PpcOpcode::kStoreHalfUpdate;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
+    case 58:
+      result.immediate = SignExtend(raw & 0xFFFC, 16);
+      switch (raw & 3) {
+        case 0: result.opcode = PpcOpcode::kLoadDoubleword; break;
+        case 1: result.opcode = PpcOpcode::kLoadDoublewordUpdate; break;
+        default: break;
+      }
+      break;
+    case 62:
+      result.immediate = SignExtend(raw & 0xFFFC, 16);
+      switch (raw & 3) {
+        case 0: result.opcode = PpcOpcode::kStoreDoubleword; break;
+        case 1: result.opcode = PpcOpcode::kStoreDoublewordUpdate; break;
+        default: break;
+      }
+      break;
     case 18:
       result.opcode = PpcOpcode::kBranch;
       result.immediate = SignExtend(raw & 0x03FFFFFC, 26);
@@ -128,9 +157,13 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 87: result.opcode = PpcOpcode::kLoadByteIndexed; break;
         case 279: result.opcode = PpcOpcode::kLoadHalfIndexed; break;
         case 343: result.opcode = PpcOpcode::kLoadHalfSignedIndexed; break;
+        case 21: result.opcode = PpcOpcode::kLoadDoublewordIndexed; break;
         case 151: result.opcode = PpcOpcode::kStoreWordIndexed; break;
         case 215: result.opcode = PpcOpcode::kStoreByteIndexed; break;
         case 407: result.opcode = PpcOpcode::kStoreHalfIndexed; break;
+        case 149: result.opcode = PpcOpcode::kStoreDoublewordIndexed; break;
+        case 24: result.opcode = PpcOpcode::kShiftLeftWord; break;
+        case 536: result.opcode = PpcOpcode::kShiftRightWord; break;
         case 28: result.opcode = PpcOpcode::kAnd; break;
         case 316: result.opcode = PpcOpcode::kXor; break;
         case 444: result.opcode = PpcOpcode::kOr; break;

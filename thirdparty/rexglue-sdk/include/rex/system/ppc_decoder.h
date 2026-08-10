@@ -26,6 +26,9 @@ enum class PpcOpcode : uint8_t {
   kLoadHalfIndexed,
   kLoadHalfSigned,
   kLoadHalfSignedIndexed,
+  kLoadDoubleword,
+  kLoadDoublewordUpdate,
+  kLoadDoublewordIndexed,
   kStoreWord,
   kStoreWordUpdate,
   kStoreWordIndexed,
@@ -35,6 +38,9 @@ enum class PpcOpcode : uint8_t {
   kStoreHalf,
   kStoreHalfUpdate,
   kStoreHalfIndexed,
+  kStoreDoubleword,
+  kStoreDoublewordUpdate,
+  kStoreDoublewordIndexed,
   kBranch,
   kBranchConditional,
   kBranchConditionalToLinkRegister,
@@ -48,6 +54,10 @@ enum class PpcOpcode : uint8_t {
   kAdd,
   kSubtractFrom,
   kNegate,
+  kRotateLeftWordImmediateAndMask,
+  kRotateLeftWordAndMask,
+  kShiftLeftWord,
+  kShiftRightWord,
 };
 
 struct DecodedPpcInstruction {
@@ -59,6 +69,9 @@ struct DecodedPpcInstruction {
   uint8_t bi = 0;
   uint8_t rb = 0;
   uint8_t cr_field = 0;
+  uint8_t shift = 0;
+  uint8_t mask_begin = 0;
+  uint8_t mask_end = 0;
   uint16_t spr = 0;
   int32_t immediate = 0;
   bool is_64_bit = false;
