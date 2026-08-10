@@ -107,11 +107,25 @@ bool CrBit(PPCContext& context, uint8_t index) {
   }
 }
 
+void SetCrBit(PPCContext& context, uint8_t index, bool value) {
+  auto& field = CrField(context, index / 4);
+  switch (index & 3) {
+    case 0: field.lt = value; break;
+    case 1: field.gt = value; break;
+    case 2: field.eq = value; break;
+    default: field.so = value; break;
+  }
+}
+
+bool EvaluateCondition(PPCContext& context, uint8_t bo, uint8_t bi) {
+  return (bo & 16) != 0 || (CrBit(context, bi) == ((bo & 8) != 0));
+}
+
 bool EvaluateBranch(PPCContext& context, uint8_t bo, uint8_t bi) {
   const bool decrement_ctr = (bo & 4) == 0;
   if (decrement_ctr) context.ctr.u64--;
   const bool ctr_ok = (bo & 4) != 0 || ((context.ctr.u64 != 0) != ((bo & 2) != 0));
-  const bool condition_ok = (bo & 16) != 0 || (CrBit(context, bi) == ((bo & 8) != 0));
+  const bool condition_ok = EvaluateCondition(context, bo, bi);
   return ctr_ok && condition_ok;
 }
 
@@ -297,6 +311,15 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
           pc = EvaluateBranch(context, instruction.bo, instruction.bi) ? target : next_pc;
         }
         break;
+      case PpcOpcode::kBranchConditionalToCountRegister: {
+        if ((instruction.bo & 4) == 0) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        const uint32_t target = context.ctr.u32 & ~uint32_t{3};
+        if (instruction.link) context.lr = next_pc;
+        pc = EvaluateCondition(context, instruction.bo, instruction.bi) ? target : next_pc;
+        break;
+      }
       case PpcOpcode::kCompareImmediate: {
         auto& field = CrField(context, instruction.cr_field);
         if (instruction.is_64_bit) {
@@ -318,6 +341,50 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
           field.compare(Gpr(context, instruction.ra).u32,
                         static_cast<uint32_t>(instruction.immediate), context.xer);
         }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kCompare:
+      case PpcOpcode::kCompareLogical: {
+        auto& field = CrField(context, instruction.cr_field);
+        const bool logical = instruction.opcode == PpcOpcode::kCompareLogical;
+        if (instruction.is_64_bit) {
+          if (logical) field.compare(Gpr(context, instruction.ra).u64,
+                                     Gpr(context, instruction.rb).u64, context.xer);
+          else field.compare(Gpr(context, instruction.ra).s64,
+                             Gpr(context, instruction.rb).s64, context.xer);
+        } else {
+          if (logical) field.compare(Gpr(context, instruction.ra).u32,
+                                     Gpr(context, instruction.rb).u32, context.xer);
+          else field.compare(Gpr(context, instruction.ra).s32,
+                             Gpr(context, instruction.rb).s32, context.xer);
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kCrAnd:
+      case PpcOpcode::kCrAndComplement:
+      case PpcOpcode::kCrEquivalent:
+      case PpcOpcode::kCrNand:
+      case PpcOpcode::kCrNor:
+      case PpcOpcode::kCrOr:
+      case PpcOpcode::kCrOrComplement:
+      case PpcOpcode::kCrXor: {
+        const bool a = CrBit(context, instruction.ra);
+        const bool b = CrBit(context, instruction.rb);
+        bool value = false;
+        switch (instruction.opcode) {
+          case PpcOpcode::kCrAnd: value = a && b; break;
+          case PpcOpcode::kCrAndComplement: value = a && !b; break;
+          case PpcOpcode::kCrEquivalent: value = a == b; break;
+          case PpcOpcode::kCrNand: value = !(a && b); break;
+          case PpcOpcode::kCrNor: value = !(a || b); break;
+          case PpcOpcode::kCrOr: value = a || b; break;
+          case PpcOpcode::kCrOrComplement: value = a || !b; break;
+          case PpcOpcode::kCrXor: value = a != b; break;
+          default: break;
+        }
+        SetCrBit(context, instruction.rt, value);
         pc = next_pc;
         break;
       }

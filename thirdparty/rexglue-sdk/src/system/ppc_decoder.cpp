@@ -146,17 +146,37 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.immediate = static_cast<int32_t>(raw & 0xFFFF);
       break;
     case 19:
-      if (((raw >> 1) & 0x3FF) == 16) {
-        result.opcode = PpcOpcode::kBranchConditionalToLinkRegister;
-        result.bo = static_cast<uint8_t>((raw >> 21) & 31);
-        result.bi = static_cast<uint8_t>((raw >> 16) & 31);
-        result.link = (raw & 1) != 0;
+      result.bo = static_cast<uint8_t>((raw >> 21) & 31);
+      result.bi = static_cast<uint8_t>((raw >> 16) & 31);
+      result.link = (raw & 1) != 0;
+      switch ((raw >> 1) & 0x3FF) {
+        case 16: result.opcode = PpcOpcode::kBranchConditionalToLinkRegister; break;
+        case 528: result.opcode = PpcOpcode::kBranchConditionalToCountRegister; break;
+        case 257: result.opcode = PpcOpcode::kCrAnd; break;
+        case 129: result.opcode = PpcOpcode::kCrAndComplement; break;
+        case 289: result.opcode = PpcOpcode::kCrEquivalent; break;
+        case 225: result.opcode = PpcOpcode::kCrNand; break;
+        case 33: result.opcode = PpcOpcode::kCrNor; break;
+        case 449: result.opcode = PpcOpcode::kCrOr; break;
+        case 417: result.opcode = PpcOpcode::kCrOrComplement; break;
+        case 193: result.opcode = PpcOpcode::kCrXor; break;
+        default: break;
       }
       break;
     case 31: {
       const uint32_t xo = (raw >> 1) & 0x3FF;
       result.record = (raw & 1) != 0;
       switch (xo) {
+        case 0:
+          result.opcode = PpcOpcode::kCompare;
+          result.cr_field = static_cast<uint8_t>((raw >> 23) & 7);
+          result.is_64_bit = ((raw >> 21) & 1) != 0;
+          break;
+        case 32:
+          result.opcode = PpcOpcode::kCompareLogical;
+          result.cr_field = static_cast<uint8_t>((raw >> 23) & 7);
+          result.is_64_bit = ((raw >> 21) & 1) != 0;
+          break;
         case 23: result.opcode = PpcOpcode::kLoadWordIndexed; break;
         case 87: result.opcode = PpcOpcode::kLoadByteIndexed; break;
         case 279: result.opcode = PpcOpcode::kLoadHalfIndexed; break;

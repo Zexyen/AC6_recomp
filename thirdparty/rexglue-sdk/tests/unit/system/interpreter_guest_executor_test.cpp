@@ -23,6 +23,25 @@ constexpr uint32_t SprForm(uint32_t rs_rt, uint32_t spr, uint32_t xo) {
   return (31u << 26) | (rs_rt << 21) | (encoded_spr << 11) | (xo << 1);
 }
 
+constexpr uint32_t CompareForm(bool logical, uint32_t cr_field, bool is_64_bit,
+                               uint32_t ra, uint32_t rb) {
+  return (31u << 26) | (cr_field << 23) |
+         (static_cast<uint32_t>(is_64_bit) << 21) | (ra << 16) | (rb << 11) |
+         (static_cast<uint32_t>(logical ? 32 : 0) << 1);
+}
+
+constexpr uint32_t XLForm(uint32_t bo, uint32_t bi, uint32_t xo,
+                          bool link = false) {
+  return (19u << 26) | (bo << 21) | (bi << 16) | (xo << 1) |
+         static_cast<uint32_t>(link);
+}
+
+constexpr uint32_t CrForm(uint32_t target, uint32_t source_a,
+                          uint32_t source_b, uint32_t xo) {
+  return (19u << 26) | (target << 21) | (source_a << 16) |
+         (source_b << 11) | (xo << 1);
+}
+
 constexpr uint32_t BForm(uint32_t bo, uint32_t bi, int16_t displacement) {
   return (16u << 26) | (bo << 21) | (bi << 16) |
          (static_cast<uint16_t>(displacement) & 0xFFFC);
@@ -392,4 +411,74 @@ TEST_CASE("PPC interpreter executes scalar multiply and divide operations",
   REQUIRE(context.r10.u64 == 7);
   REQUIRE(context.r11.u64 == 0);
   REQUIRE(context.cr0.eq == 1);
+}
+
+TEST_CASE("Runtime PPC decoder recognizes register compares CR logic and bcctr",
+          "[system][interpreter]") {
+  const auto compare = rex::runtime::DecodePpcInstruction(CompareForm(false, 3, true, 4, 5));
+  REQUIRE(compare.opcode == rex::runtime::PpcOpcode::kCompare);
+  REQUIRE(compare.cr_field == 3);
+  REQUIRE(compare.is_64_bit);
+  REQUIRE(compare.ra == 4);
+  REQUIRE(compare.rb == 5);
+
+  const auto cr_xor = rex::runtime::DecodePpcInstruction(CrForm(2, 8, 13, 193));
+  REQUIRE(cr_xor.opcode == rex::runtime::PpcOpcode::kCrXor);
+  REQUIRE(cr_xor.rt == 2);
+  REQUIRE(cr_xor.ra == 8);
+  REQUIRE(cr_xor.rb == 13);
+
+  const auto bcctr = rex::runtime::DecodePpcInstruction(XLForm(12, 2, 528, true));
+  REQUIRE(bcctr.opcode == rex::runtime::PpcOpcode::kBranchConditionalToCountRegister);
+  REQUIRE(bcctr.bo == 12);
+  REQUIRE(bcctr.bi == 2);
+  REQUIRE(bcctr.link);
+}
+
+TEST_CASE("PPC interpreter compares registers and applies CR logical operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(5);
+
+  // cmpw cr2,r3,r4; cmplw cr3,r3,r4; crand cr0.eq,cr2.lt,cr3.gt; blr
+  StoreInstruction(memory.data(), 0, CompareForm(false, 2, false, 3, 4));
+  StoreInstruction(memory.data(), 4, CompareForm(true, 3, false, 3, 4));
+  StoreInstruction(memory.data(), 8, CrForm(2, 8, 13, 257));
+  StoreInstruction(memory.data(), 12, 0x4E800020);
+  context.r3.u64 = 0xFFFFFFFF;
+  context.r4.u64 = 1;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.cr2.lt == 1);
+  REQUIRE(context.cr3.gt == 1);
+  REQUIRE(context.cr0.eq == 1);
+}
+
+TEST_CASE("PPC interpreter branches conditionally through the count register",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  // li r3,20; mtctr r3; cmpw cr0,r4,r5; beqctr; skipped; li r6,2; blr
+  StoreInstruction(memory.data(), 0, DForm(14, 3, 0, 20));
+  StoreInstruction(memory.data(), 4, SprForm(3, 9, 467));
+  StoreInstruction(memory.data(), 8, CompareForm(false, 0, false, 4, 5));
+  StoreInstruction(memory.data(), 12, XLForm(12, 2, 528));
+  StoreInstruction(memory.data(), 16, DForm(14, 6, 0, 1));
+  StoreInstruction(memory.data(), 20, DForm(14, 6, 0, 2));
+  StoreInstruction(memory.data(), 24, 0x4E800020);
+  context.r4.u64 = 9;
+  context.r5.u64 = 9;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r6.u64 == 2);
+  REQUIRE(context.ctr.u64 == 20);
 }
