@@ -35,6 +35,53 @@ void StoreBe32(uint8_t* address, uint32_t value) {
   std::memcpy(address, &value, sizeof(value));
 }
 
+PPCCRRegister& CrField(PPCContext& context, uint8_t index) {
+  switch (index) {
+    case 0: return context.cr0;
+    case 1: return context.cr1;
+    case 2: return context.cr2;
+    case 3: return context.cr3;
+    case 4: return context.cr4;
+    case 5: return context.cr5;
+    case 6: return context.cr6;
+    default: return context.cr7;
+  }
+}
+
+bool CrBit(PPCContext& context, uint8_t index) {
+  const auto& field = CrField(context, index / 4);
+  switch (index & 3) {
+    case 0: return field.lt != 0;
+    case 1: return field.gt != 0;
+    case 2: return field.eq != 0;
+    default: return field.so != 0;
+  }
+}
+
+bool EvaluateBranch(PPCContext& context, uint8_t bo, uint8_t bi) {
+  const bool decrement_ctr = (bo & 4) == 0;
+  if (decrement_ctr) context.ctr.u64--;
+  const bool ctr_ok = (bo & 4) != 0 || ((context.ctr.u64 != 0) != ((bo & 2) != 0));
+  const bool condition_ok = (bo & 16) != 0 || (CrBit(context, bi) == ((bo & 8) != 0));
+  return ctr_ok && condition_ok;
+}
+
+bool ReadSpr(PPCContext& context, uint16_t spr, uint64_t& value) {
+  switch (spr) {
+    case 8: value = context.lr; return true;
+    case 9: value = context.ctr.u64; return true;
+    default: return false;
+  }
+}
+
+bool WriteSpr(PPCContext& context, uint16_t spr, uint64_t value) {
+  switch (spr) {
+    case 8: context.lr = value; return true;
+    case 9: context.ctr.u64 = value; return true;
+    default: return false;
+  }
+}
+
 }  // namespace
 
 GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint8_t* memory_base,
@@ -88,17 +135,75 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = instruction.absolute ? static_cast<uint32_t>(instruction.immediate)
                                   : static_cast<uint32_t>(pc + instruction.immediate);
         break;
+      case PpcOpcode::kBranchConditional:
+        if (instruction.link) context.lr = next_pc;
+        pc = EvaluateBranch(context, instruction.bo, instruction.bi)
+                 ? (instruction.absolute ? static_cast<uint32_t>(instruction.immediate)
+                                         : static_cast<uint32_t>(pc + instruction.immediate))
+                 : next_pc;
+        break;
       case PpcOpcode::kBranchConditionalToLinkRegister:
         // BO=20 is the unconditional blr form. Other BO/BI combinations will
         // be added with condition-register support.
-        if (instruction.bo != 20) {
-          return {GuestExecutionStatus::kFault, pc, raw, count};
-        }
         {
           const uint32_t target = static_cast<uint32_t>(context.lr) & ~uint32_t{3};
           if (instruction.link) context.lr = next_pc;
-          pc = target;
+          pc = EvaluateBranch(context, instruction.bo, instruction.bi) ? target : next_pc;
         }
+        break;
+      case PpcOpcode::kCompareImmediate: {
+        auto& field = CrField(context, instruction.cr_field);
+        if (instruction.is_64_bit) {
+          field.compare(Gpr(context, instruction.ra).s64,
+                        static_cast<int64_t>(instruction.immediate), context.xer);
+        } else {
+          field.compare(Gpr(context, instruction.ra).s32, instruction.immediate, context.xer);
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kCompareLogicalImmediate: {
+        auto& field = CrField(context, instruction.cr_field);
+        if (instruction.is_64_bit) {
+          field.compare(Gpr(context, instruction.ra).u64,
+                        static_cast<uint64_t>(static_cast<uint32_t>(instruction.immediate)),
+                        context.xer);
+        } else {
+          field.compare(Gpr(context, instruction.ra).u32,
+                        static_cast<uint32_t>(instruction.immediate), context.xer);
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kOr:
+        Gpr(context, instruction.ra).u64 =
+            Gpr(context, instruction.rt).u64 | Gpr(context, instruction.rb).u64;
+        pc = next_pc;
+        break;
+      case PpcOpcode::kXor:
+        Gpr(context, instruction.ra).u64 =
+            Gpr(context, instruction.rt).u64 ^ Gpr(context, instruction.rb).u64;
+        pc = next_pc;
+        break;
+      case PpcOpcode::kAnd:
+        Gpr(context, instruction.ra).u64 =
+            Gpr(context, instruction.rt).u64 & Gpr(context, instruction.rb).u64;
+        pc = next_pc;
+        break;
+      case PpcOpcode::kMoveFromSpr: {
+        uint64_t value = 0;
+        if (!ReadSpr(context, instruction.spr, value)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        Gpr(context, instruction.rt).u64 = value;
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kMoveToSpr:
+        if (!WriteSpr(context, instruction.spr, Gpr(context, instruction.rt).u64)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        pc = next_pc;
         break;
       case PpcOpcode::kUnknown:
         return {GuestExecutionStatus::kFault, pc, raw, count};
