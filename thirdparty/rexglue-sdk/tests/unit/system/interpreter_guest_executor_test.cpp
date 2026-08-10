@@ -159,3 +159,75 @@ TEST_CASE("PPC interpreter handles logical registers and link-register SPR moves
   REQUIRE(context.r6.u64 == 0x0FFF);
   REQUIRE(context.lr == 0x0FFF);
 }
+
+TEST_CASE("PPC interpreter handles byte halfword and update-form memory operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 512> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(16);
+
+  // li r3, 0x100; li r4, -128; stbu r4, 1(r3); lbz r5, 0(r3);
+  // sthu r4, 2(r3); lha r6, 0(r3); blr
+  StoreInstruction(memory.data(), 0, DForm(14, 3, 0, 0x100));
+  StoreInstruction(memory.data(), 4, DForm(14, 4, 0, 0xFF80));
+  StoreInstruction(memory.data(), 8, DForm(39, 4, 3, 1));
+  StoreInstruction(memory.data(), 12, DForm(34, 5, 3, 0));
+  StoreInstruction(memory.data(), 16, DForm(45, 4, 3, 2));
+  StoreInstruction(memory.data(), 20, DForm(42, 6, 3, 0));
+  StoreInstruction(memory.data(), 24, 0x4E800020);
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r3.u64 == 0x103);
+  REQUIRE(context.r5.u64 == 0x80);
+  REQUIRE(context.r6.s64 == -128);
+  REQUIRE(memory[0x101] == 0x80);
+  REQUIRE(memory[0x103] == 0xFF);
+  REQUIRE(memory[0x104] == 0x80);
+}
+
+TEST_CASE("PPC interpreter handles indexed memory addressing", "[system][interpreter]") {
+  std::array<uint8_t, 512> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(16);
+
+  StoreInstruction(memory.data(), 0, DForm(14, 3, 0, 0x100));
+  StoreInstruction(memory.data(), 4, DForm(14, 4, 0, 4));
+  StoreInstruction(memory.data(), 8, DForm(14, 5, 0, 0x1234));
+  StoreInstruction(memory.data(), 12, XForm(5, 3, 4, 407));
+  StoreInstruction(memory.data(), 16, XForm(6, 3, 4, 279));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r6.u64 == 0x1234);
+  REQUIRE(memory[0x104] == 0x12);
+  REQUIRE(memory[0x105] == 0x34);
+}
+
+TEST_CASE("PPC interpreter executes register arithmetic and record forms",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(16);
+
+  StoreInstruction(memory.data(), 0, DForm(14, 3, 0, 9));
+  StoreInstruction(memory.data(), 4, DForm(14, 4, 0, 4));
+  StoreInstruction(memory.data(), 8, XForm(5, 3, 4, 266));
+  StoreInstruction(memory.data(), 12, XForm(6, 4, 3, 40));
+  StoreInstruction(memory.data(), 16, XForm(7, 6, 0, 104) | 1u);
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r5.u64 == 13);
+  REQUIRE(context.r6.u64 == 5);
+  REQUIRE(context.r7.s64 == -5);
+  REQUIRE(context.cr0.lt == 1);
+}

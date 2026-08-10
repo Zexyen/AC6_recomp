@@ -38,8 +38,52 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.opcode = PpcOpcode::kLoadWord;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
+    case 33:
+      result.opcode = PpcOpcode::kLoadWordUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 34:
+      result.opcode = PpcOpcode::kLoadByte;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 35:
+      result.opcode = PpcOpcode::kLoadByteUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
     case 36:
       result.opcode = PpcOpcode::kStoreWord;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 37:
+      result.opcode = PpcOpcode::kStoreWordUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 38:
+      result.opcode = PpcOpcode::kStoreByte;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 39:
+      result.opcode = PpcOpcode::kStoreByteUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 40:
+      result.opcode = PpcOpcode::kLoadHalf;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 41:
+      result.opcode = PpcOpcode::kLoadHalfUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 42:
+      result.opcode = PpcOpcode::kLoadHalfSigned;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 44:
+      result.opcode = PpcOpcode::kStoreHalf;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 45:
+      result.opcode = PpcOpcode::kStoreHalfUpdate;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
     case 18:
@@ -78,10 +122,21 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       break;
     case 31: {
       const uint32_t xo = (raw >> 1) & 0x3FF;
+      result.record = (raw & 1) != 0;
       switch (xo) {
+        case 23: result.opcode = PpcOpcode::kLoadWordIndexed; break;
+        case 87: result.opcode = PpcOpcode::kLoadByteIndexed; break;
+        case 279: result.opcode = PpcOpcode::kLoadHalfIndexed; break;
+        case 343: result.opcode = PpcOpcode::kLoadHalfSignedIndexed; break;
+        case 151: result.opcode = PpcOpcode::kStoreWordIndexed; break;
+        case 215: result.opcode = PpcOpcode::kStoreByteIndexed; break;
+        case 407: result.opcode = PpcOpcode::kStoreHalfIndexed; break;
         case 28: result.opcode = PpcOpcode::kAnd; break;
         case 316: result.opcode = PpcOpcode::kXor; break;
         case 444: result.opcode = PpcOpcode::kOr; break;
+        case 266: result.opcode = PpcOpcode::kAdd; break;
+        case 40: result.opcode = PpcOpcode::kSubtractFrom; break;
+        case 104: result.opcode = PpcOpcode::kNegate; break;
         case 339:
           result.opcode = PpcOpcode::kMoveFromSpr;
           result.spr = static_cast<uint16_t>(((raw >> 16) & 31) | (((raw >> 11) & 31) << 5));
