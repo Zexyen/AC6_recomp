@@ -155,6 +155,12 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kMultiplyLowImmediate:
+        Gpr(context, instruction.rt).u64 =
+            Gpr(context, instruction.ra).u64 *
+            static_cast<uint64_t>(static_cast<int64_t>(instruction.immediate));
+        pc = next_pc;
+        break;
       case PpcOpcode::kOrImmediate:
         Gpr(context, instruction.ra).u64 =
             Gpr(context, instruction.rt).u64 | static_cast<uint32_t>(instruction.immediate);
@@ -347,6 +353,69 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
         pc = next_pc;
         break;
+      case PpcOpcode::kSignExtendByte:
+        Gpr(context, instruction.ra).s64 = static_cast<int8_t>(Gpr(context, instruction.rt).u8);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kSignExtendHalfword:
+        Gpr(context, instruction.ra).s64 = static_cast<int16_t>(Gpr(context, instruction.rt).u16);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kSignExtendWord:
+        Gpr(context, instruction.ra).s64 = static_cast<int32_t>(Gpr(context, instruction.rt).u32);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kCountLeadingZerosWord:
+        Gpr(context, instruction.ra).u64 = std::countl_zero(Gpr(context, instruction.rt).u32);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kCountLeadingZerosDoubleword:
+        Gpr(context, instruction.ra).u64 = std::countl_zero(Gpr(context, instruction.rt).u64);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kMultiplyLowWord:
+        Gpr(context, instruction.rt).s64 = static_cast<int32_t>(
+            Gpr(context, instruction.ra).u32 * Gpr(context, instruction.rb).u32);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kMultiplyLowDoubleword:
+        Gpr(context, instruction.rt).u64 =
+            Gpr(context, instruction.ra).u64 * Gpr(context, instruction.rb).u64;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kDivideWord:
+      case PpcOpcode::kDivideWordUnsigned:
+      case PpcOpcode::kDivideDoubleword:
+      case PpcOpcode::kDivideDoublewordUnsigned: {
+        auto& destination = Gpr(context, instruction.rt);
+        const auto& dividend = Gpr(context, instruction.ra);
+        const auto& divisor = Gpr(context, instruction.rb);
+        if (instruction.opcode == PpcOpcode::kDivideWord) {
+          destination.s64 = divisor.s32 == 0 ||
+                                    (dividend.s32 == INT32_MIN && divisor.s32 == -1)
+                                ? 0
+                                : dividend.s32 / divisor.s32;
+        } else if (instruction.opcode == PpcOpcode::kDivideWordUnsigned) {
+          destination.u64 = divisor.u32 == 0 ? 0 : dividend.u32 / divisor.u32;
+        } else if (instruction.opcode == PpcOpcode::kDivideDoubleword) {
+          destination.s64 = divisor.s64 == 0 ||
+                                    (dividend.s64 == INT64_MIN && divisor.s64 == -1)
+                                ? 0
+                                : dividend.s64 / divisor.s64;
+        } else {
+          destination.u64 = divisor.u64 == 0 ? 0 : dividend.u64 / divisor.u64;
+        }
+        if (instruction.record) UpdateCr0(context, destination.u64);
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kRotateLeftWordImmediateAndMask:
       case PpcOpcode::kRotateLeftWordAndMask: {
         const uint32_t shift = instruction.opcode == PpcOpcode::kRotateLeftWordAndMask

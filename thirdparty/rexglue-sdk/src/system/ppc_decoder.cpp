@@ -18,6 +18,10 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
   result.rb = static_cast<uint8_t>((raw >> 11) & 31);
 
   switch (raw >> 26) {
+    case 7:
+      result.opcode = PpcOpcode::kMultiplyLowImmediate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
     case 14:
       result.opcode = PpcOpcode::kAddImmediate;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
@@ -170,6 +174,17 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 266: result.opcode = PpcOpcode::kAdd; break;
         case 40: result.opcode = PpcOpcode::kSubtractFrom; break;
         case 104: result.opcode = PpcOpcode::kNegate; break;
+        case 954: result.opcode = PpcOpcode::kSignExtendByte; break;
+        case 922: result.opcode = PpcOpcode::kSignExtendHalfword; break;
+        case 986: result.opcode = PpcOpcode::kSignExtendWord; break;
+        case 26: result.opcode = PpcOpcode::kCountLeadingZerosWord; break;
+        case 58: result.opcode = PpcOpcode::kCountLeadingZerosDoubleword; break;
+        case 235: result.opcode = PpcOpcode::kMultiplyLowWord; break;
+        case 233: result.opcode = PpcOpcode::kMultiplyLowDoubleword; break;
+        case 491: result.opcode = PpcOpcode::kDivideWord; break;
+        case 459: result.opcode = PpcOpcode::kDivideWordUnsigned; break;
+        case 489: result.opcode = PpcOpcode::kDivideDoubleword; break;
+        case 457: result.opcode = PpcOpcode::kDivideDoublewordUnsigned; break;
         case 339:
           result.opcode = PpcOpcode::kMoveFromSpr;
           result.spr = static_cast<uint16_t>(((raw >> 16) & 31) | (((raw >> 11) & 31) << 5));

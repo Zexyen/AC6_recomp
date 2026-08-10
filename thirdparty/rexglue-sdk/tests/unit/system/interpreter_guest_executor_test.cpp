@@ -318,3 +318,78 @@ TEST_CASE("PPC interpreter executes word rotate mask and logical shifts",
   REQUIRE(context.r9.u64 == 0);
   REQUIRE(context.r11.u64 == 0);
 }
+
+TEST_CASE("Runtime PPC decoder recognizes scalar integer operations",
+          "[system][interpreter]") {
+  REQUIRE(rex::runtime::DecodePpcInstruction(DForm(7, 3, 4, 0xFFF9)).opcode ==
+          rex::runtime::PpcOpcode::kMultiplyLowImmediate);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 0, 954)).opcode ==
+          rex::runtime::PpcOpcode::kSignExtendByte);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 0, 26)).opcode ==
+          rex::runtime::PpcOpcode::kCountLeadingZerosWord);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 491)).opcode ==
+          rex::runtime::PpcOpcode::kDivideWord);
+}
+
+TEST_CASE("PPC interpreter handles sign extension and leading-zero counts",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, XForm(3, 4, 0, 954));
+  StoreInstruction(memory.data(), 4, XForm(3, 5, 0, 922));
+  StoreInstruction(memory.data(), 8, XForm(3, 6, 0, 986) | 1u);
+  StoreInstruction(memory.data(), 12, XForm(7, 8, 0, 26));
+  StoreInstruction(memory.data(), 16, XForm(9, 10, 0, 58));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r3.u64 = 0xFFFFFFFFFFFFFF80;
+  context.r7.u64 = 0x0000F000;
+  context.r9.u64 = 0x0000000100000000;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r4.s64 == -128);
+  REQUIRE(context.r5.s64 == -128);
+  REQUIRE(context.r6.s64 == -128);
+  REQUIRE(context.cr0.lt == 1);
+  REQUIRE(context.r8.u64 == 16);
+  REQUIRE(context.r10.u64 == 31);
+}
+
+TEST_CASE("PPC interpreter executes scalar multiply and divide operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(10);
+
+  StoreInstruction(memory.data(), 0, DForm(7, 4, 3, 0xFFFD));
+  StoreInstruction(memory.data(), 4, XForm(5, 3, 12, 235));
+  StoreInstruction(memory.data(), 8, XForm(6, 3, 12, 233));
+  StoreInstruction(memory.data(), 12, XForm(7, 3, 12, 491));
+  StoreInstruction(memory.data(), 16, XForm(8, 3, 12, 459));
+  StoreInstruction(memory.data(), 20, XForm(9, 3, 12, 489));
+  StoreInstruction(memory.data(), 24, XForm(10, 3, 12, 457));
+  StoreInstruction(memory.data(), 28, XForm(11, 3, 13, 457) | 1u);
+  StoreInstruction(memory.data(), 32, 0x4E800020);
+  context.r3.u64 = 21;
+  context.r4.u64 = 3;
+  context.r12.u64 = 3;
+  context.r13.u64 = 0;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r4.s64 == -63);
+  REQUIRE(context.r5.s64 == 63);
+  REQUIRE(context.r6.u64 == 63);
+  REQUIRE(context.r7.s64 == 7);
+  REQUIRE(context.r8.u64 == 7);
+  REQUIRE(context.r9.s64 == 7);
+  REQUIRE(context.r10.u64 == 7);
+  REQUIRE(context.r11.u64 == 0);
+  REQUIRE(context.cr0.eq == 1);
+}
