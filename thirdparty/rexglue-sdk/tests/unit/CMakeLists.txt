@@ -41,7 +41,10 @@ catch_discover_tests(unit_tests
 # cycle so they can validate the adapter in isolation.
 add_executable(executor_unit_tests
     system/aot_guest_executor_test.cpp
+    system/interpreter_guest_executor_test.cpp
     ${PROJECT_SOURCE_DIR}/src/system/aot_guest_executor.cpp
+    ${PROJECT_SOURCE_DIR}/src/system/interpreter_guest_executor.cpp
+    ${PROJECT_SOURCE_DIR}/src/system/ppc_decoder.cpp
 )
 target_include_directories(executor_unit_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/include

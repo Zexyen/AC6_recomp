@@ -42,6 +42,8 @@ set(REXSYSTEM_SOURCES
     map_parser.cpp
     module.cpp
     aot_guest_executor.cpp
+    interpreter_guest_executor.cpp
+    ppc_decoder.cpp
     function_dispatcher.cpp
     thread.cpp
     thread_state.cpp

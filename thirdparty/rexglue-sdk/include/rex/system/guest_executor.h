@@ -21,14 +21,16 @@ enum class GuestExecutionStatus : uint8_t {
 struct GuestExecutionResult {
   GuestExecutionStatus status = GuestExecutionStatus::kFault;
   uint32_t guest_address = 0;
+  uint32_t instruction = 0;
+  uint64_t instructions_executed = 0;
 
   [[nodiscard]] bool succeeded() const { return status == GuestExecutionStatus::kSuccess; }
 
   static GuestExecutionResult Success(uint32_t address) {
-    return {GuestExecutionStatus::kSuccess, address};
+    return {GuestExecutionStatus::kSuccess, address, 0, 0};
   }
   static GuestExecutionResult Unmapped(uint32_t address) {
-    return {GuestExecutionStatus::kUnmappedAddress, address};
+    return {GuestExecutionStatus::kUnmappedAddress, address, 0, 0};
   }
 };
 
