@@ -549,3 +549,80 @@ TEST_CASE("PPC interpreter executes arithmetic word shifts and updates carry",
   REQUIRE(context.xer.ca == 0);
   REQUIRE(context.cr0.lt == 1);
 }
+
+TEST_CASE("Runtime PPC decoder recognizes carry-aware arithmetic",
+          "[system][interpreter]") {
+  const auto addic = rex::runtime::DecodePpcInstruction(DForm(13, 3, 4, 1));
+  REQUIRE(addic.opcode == rex::runtime::PpcOpcode::kAddImmediateCarrying);
+  REQUIRE(addic.record);
+  REQUIRE(rex::runtime::DecodePpcInstruction(DForm(8, 3, 4, 1)).opcode ==
+          rex::runtime::PpcOpcode::kSubtractFromImmediateCarrying);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 10)).opcode ==
+          rex::runtime::PpcOpcode::kAddCarrying);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 136)).opcode ==
+          rex::runtime::PpcOpcode::kSubtractFromExtended);
+}
+
+TEST_CASE("PPC interpreter propagates carry through extended addition",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(6);
+
+  // addc r5,r3,r4; adde r6,r7,r8; addze r9,r10; addme. r11,r12; blr
+  StoreInstruction(memory.data(), 0, XForm(5, 3, 4, 10));
+  StoreInstruction(memory.data(), 4, XForm(6, 7, 8, 138));
+  StoreInstruction(memory.data(), 8, XForm(9, 10, 0, 202));
+  StoreInstruction(memory.data(), 12, XForm(11, 12, 0, 234) | 1u);
+  StoreInstruction(memory.data(), 16, 0x4E800020);
+  context.r3.u64 = UINT64_MAX;
+  context.r4.u64 = 1;
+  context.r7.u64 = UINT64_MAX;
+  context.r8.u64 = 0;
+  context.r10.u64 = UINT64_MAX;
+  context.r12.u64 = 1;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r5.u64 == 0);
+  REQUIRE(context.r6.u64 == 0);
+  REQUIRE(context.r9.u64 == 0);
+  REQUIRE(context.r11.u64 == 1);
+  REQUIRE(context.xer.ca == 1);
+  REQUIRE(context.cr0.gt == 1);
+}
+
+TEST_CASE("PPC interpreter executes carrying immediate and subtraction forms",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, DForm(13, 4, 3, 1));
+  StoreInstruction(memory.data(), 4, DForm(8, 5, 6, 10));
+  StoreInstruction(memory.data(), 8, XForm(9, 7, 8, 8));
+  StoreInstruction(memory.data(), 12, XForm(12, 10, 11, 136));
+  StoreInstruction(memory.data(), 16, XForm(14, 13, 0, 200) | 1u);
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r3.u64 = UINT64_MAX;
+  context.r6.u64 = 3;
+  context.r7.u64 = 7;
+  context.r8.u64 = 9;
+  context.r10.u64 = 5;
+  context.r11.u64 = 8;
+  context.r13.u64 = 0;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r4.u64 == 0);
+  REQUIRE(context.r5.u64 == 7);
+  REQUIRE(context.r9.u64 == 2);
+  REQUIRE(context.r12.u64 == 3);
+  REQUIRE(context.r14.u64 == 0);
+  REQUIRE(context.xer.ca == 1);
+  REQUIRE(context.cr0.eq == 1);
+}

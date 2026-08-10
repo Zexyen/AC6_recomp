@@ -68,6 +68,18 @@ uint32_t WordMask(uint8_t begin, uint8_t end) {
   return mask;
 }
 
+struct CarryResult {
+  uint64_t value;
+  bool carry;
+};
+
+CarryResult AddWithCarry(uint64_t left, uint64_t right, bool carry_in) {
+  const uint64_t partial = left + right;
+  const bool partial_carry = partial < left;
+  const uint64_t value = partial + static_cast<uint64_t>(carry_in);
+  return {value, partial_carry || (carry_in && value == 0)};
+}
+
 uint32_t EffectiveAddress(PPCContext& context, const DecodedPpcInstruction& instruction,
                           bool indexed) {
   const uint64_t base = instruction.ra ? Gpr(context, instruction.ra).u64 : 0;
@@ -166,6 +178,25 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
       case PpcOpcode::kAddImmediateShifted: {
         const uint64_t base = instruction.ra ? Gpr(context, instruction.ra).u64 : 0;
         Gpr(context, instruction.rt).u64 = base + static_cast<int64_t>(instruction.immediate);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kAddImmediateCarrying: {
+        const auto result = AddWithCarry(
+            Gpr(context, instruction.ra).u64,
+            static_cast<uint64_t>(static_cast<int64_t>(instruction.immediate)), false);
+        Gpr(context, instruction.rt).u64 = result.value;
+        context.xer.ca = result.carry;
+        if (instruction.record) UpdateCr0(context, result.value);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kSubtractFromImmediateCarrying: {
+        const uint64_t source = Gpr(context, instruction.ra).u64;
+        const auto result = AddWithCarry(
+            ~source, static_cast<uint64_t>(static_cast<int64_t>(instruction.immediate)), true);
+        Gpr(context, instruction.rt).u64 = result.value;
+        context.xer.ca = result.carry;
         pc = next_pc;
         break;
       }
@@ -442,12 +473,56 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
         pc = next_pc;
         break;
+      case PpcOpcode::kAddCarrying:
+      case PpcOpcode::kAddExtended:
+      case PpcOpcode::kAddToMinusOneExtended:
+      case PpcOpcode::kAddToZeroExtended: {
+        const uint64_t left = Gpr(context, instruction.ra).u64;
+        uint64_t right = 0;
+        bool carry_in = false;
+        if (instruction.opcode == PpcOpcode::kAddCarrying ||
+            instruction.opcode == PpcOpcode::kAddExtended) {
+          right = Gpr(context, instruction.rb).u64;
+        } else if (instruction.opcode == PpcOpcode::kAddToMinusOneExtended) {
+          right = UINT64_MAX;
+        }
+        if (instruction.opcode != PpcOpcode::kAddCarrying) carry_in = context.xer.ca != 0;
+        const auto result = AddWithCarry(left, right, carry_in);
+        Gpr(context, instruction.rt).u64 = result.value;
+        context.xer.ca = result.carry;
+        if (instruction.record) UpdateCr0(context, result.value);
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kSubtractFrom:
         Gpr(context, instruction.rt).u64 =
             Gpr(context, instruction.rb).u64 - Gpr(context, instruction.ra).u64;
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
         pc = next_pc;
         break;
+      case PpcOpcode::kSubtractFromCarrying:
+      case PpcOpcode::kSubtractFromExtended:
+      case PpcOpcode::kSubtractFromMinusOneExtended:
+      case PpcOpcode::kSubtractFromZeroExtended: {
+        const uint64_t left = ~Gpr(context, instruction.ra).u64;
+        uint64_t right = 0;
+        bool carry_in = true;
+        if (instruction.opcode == PpcOpcode::kSubtractFromCarrying ||
+            instruction.opcode == PpcOpcode::kSubtractFromExtended) {
+          right = Gpr(context, instruction.rb).u64;
+        } else if (instruction.opcode == PpcOpcode::kSubtractFromMinusOneExtended) {
+          right = UINT64_MAX;
+        }
+        if (instruction.opcode != PpcOpcode::kSubtractFromCarrying) {
+          carry_in = context.xer.ca != 0;
+        }
+        const auto result = AddWithCarry(left, right, carry_in);
+        Gpr(context, instruction.rt).u64 = result.value;
+        context.xer.ca = result.carry;
+        if (instruction.record) UpdateCr0(context, result.value);
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kNegate:
         Gpr(context, instruction.rt).u64 = uint64_t{0} - Gpr(context, instruction.ra).u64;
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);

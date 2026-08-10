@@ -18,6 +18,16 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
   result.rb = static_cast<uint8_t>((raw >> 11) & 31);
 
   switch (raw >> 26) {
+    case 8:
+      result.opcode = PpcOpcode::kSubtractFromImmediateCarrying;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 12:
+    case 13:
+      result.opcode = PpcOpcode::kAddImmediateCarrying;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      result.record = (raw >> 26) == 13;
+      break;
     case 7:
       result.opcode = PpcOpcode::kMultiplyLowImmediate;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
@@ -202,7 +212,15 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
           result.shift = result.rb;
           break;
         case 266: result.opcode = PpcOpcode::kAdd; break;
+        case 10: result.opcode = PpcOpcode::kAddCarrying; break;
+        case 138: result.opcode = PpcOpcode::kAddExtended; break;
+        case 234: result.opcode = PpcOpcode::kAddToMinusOneExtended; break;
+        case 202: result.opcode = PpcOpcode::kAddToZeroExtended; break;
         case 40: result.opcode = PpcOpcode::kSubtractFrom; break;
+        case 8: result.opcode = PpcOpcode::kSubtractFromCarrying; break;
+        case 136: result.opcode = PpcOpcode::kSubtractFromExtended; break;
+        case 232: result.opcode = PpcOpcode::kSubtractFromMinusOneExtended; break;
+        case 200: result.opcode = PpcOpcode::kSubtractFromZeroExtended; break;
         case 104: result.opcode = PpcOpcode::kNegate; break;
         case 954: result.opcode = PpcOpcode::kSignExtendByte; break;
         case 922: result.opcode = PpcOpcode::kSignExtendHalfword; break;
