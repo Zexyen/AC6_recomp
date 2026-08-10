@@ -391,16 +391,49 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
       case PpcOpcode::kOr:
         Gpr(context, instruction.ra).u64 =
             Gpr(context, instruction.rt).u64 | Gpr(context, instruction.rb).u64;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
         pc = next_pc;
         break;
       case PpcOpcode::kXor:
         Gpr(context, instruction.ra).u64 =
             Gpr(context, instruction.rt).u64 ^ Gpr(context, instruction.rb).u64;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
         pc = next_pc;
         break;
       case PpcOpcode::kAnd:
         Gpr(context, instruction.ra).u64 =
             Gpr(context, instruction.rt).u64 & Gpr(context, instruction.rb).u64;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kAndComplement:
+        Gpr(context, instruction.ra).u64 =
+            Gpr(context, instruction.rt).u64 & ~Gpr(context, instruction.rb).u64;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kOrComplement:
+        Gpr(context, instruction.ra).u64 =
+            Gpr(context, instruction.rt).u64 | ~Gpr(context, instruction.rb).u64;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kNand:
+        Gpr(context, instruction.ra).u64 =
+            ~(Gpr(context, instruction.rt).u64 & Gpr(context, instruction.rb).u64);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kNor:
+        Gpr(context, instruction.ra).u64 =
+            ~(Gpr(context, instruction.rt).u64 | Gpr(context, instruction.rb).u64);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kEquivalent:
+        Gpr(context, instruction.ra).u64 =
+            ~(Gpr(context, instruction.rt).u64 ^ Gpr(context, instruction.rb).u64);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
         pc = next_pc;
         break;
       case PpcOpcode::kAdd:
@@ -506,6 +539,21 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         }
         Gpr(context, instruction.ra).u64 = value;
         if (instruction.record) UpdateCr0Word(context, value);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kShiftRightArithmeticWord:
+      case PpcOpcode::kShiftRightArithmeticWordImmediate: {
+        const uint32_t requested_shift =
+            instruction.opcode == PpcOpcode::kShiftRightArithmeticWordImmediate
+                ? instruction.shift
+                : Gpr(context, instruction.rb).u32 & 63;
+        const uint32_t shift = requested_shift > 31 ? 31 : requested_shift;
+        const int32_t source = Gpr(context, instruction.rt).s32;
+        const uint32_t discarded_mask = shift == 0 ? 0 : (uint32_t{1} << shift) - 1;
+        context.xer.ca = source < 0 && (Gpr(context, instruction.rt).u32 & discarded_mask) != 0;
+        Gpr(context, instruction.ra).s64 = source >> shift;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
         pc = next_pc;
         break;
       }

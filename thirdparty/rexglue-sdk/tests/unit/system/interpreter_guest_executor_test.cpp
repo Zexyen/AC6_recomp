@@ -482,3 +482,70 @@ TEST_CASE("PPC interpreter branches conditionally through the count register",
   REQUIRE(context.r6.u64 == 2);
   REQUIRE(context.ctr.u64 == 20);
 }
+
+TEST_CASE("Runtime PPC decoder recognizes complemented logical and arithmetic shifts",
+          "[system][interpreter]") {
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 60)).opcode ==
+          rex::runtime::PpcOpcode::kAndComplement);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 284)).opcode ==
+          rex::runtime::PpcOpcode::kEquivalent);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 792)).opcode ==
+          rex::runtime::PpcOpcode::kShiftRightArithmeticWord);
+  const auto immediate = rex::runtime::DecodePpcInstruction(XForm(3, 4, 7, 824) | 1u);
+  REQUIRE(immediate.opcode == rex::runtime::PpcOpcode::kShiftRightArithmeticWordImmediate);
+  REQUIRE(immediate.shift == 7);
+  REQUIRE(immediate.record);
+}
+
+TEST_CASE("PPC interpreter executes complemented logical operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, XForm(3, 5, 4, 60));
+  StoreInstruction(memory.data(), 4, XForm(3, 6, 4, 412));
+  StoreInstruction(memory.data(), 8, XForm(3, 7, 4, 476));
+  StoreInstruction(memory.data(), 12, XForm(3, 8, 4, 124));
+  StoreInstruction(memory.data(), 16, XForm(3, 9, 4, 284) | 1u);
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r3.u64 = 0x0F0F;
+  context.r4.u64 = 0x00FF;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r5.u64 == 0x0F00);
+  REQUIRE(context.r6.u64 == 0xFFFFFFFFFFFFFF0F);
+  REQUIRE(context.r7.u64 == 0xFFFFFFFFFFFFFFF0);
+  REQUIRE(context.r8.u64 == 0xFFFFFFFFFFFFF000);
+  REQUIRE(context.r9.u64 == 0xFFFFFFFFFFFFF00F);
+  REQUIRE(context.cr0.lt == 1);
+}
+
+TEST_CASE("PPC interpreter executes arithmetic word shifts and updates carry",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(5);
+
+  // srawi r5,r3,2; sraw. r6,r3,r4; srawi. r7,r8,0; blr
+  StoreInstruction(memory.data(), 0, XForm(3, 5, 2, 824));
+  StoreInstruction(memory.data(), 4, XForm(3, 6, 4, 792) | 1u);
+  StoreInstruction(memory.data(), 8, XForm(8, 7, 0, 824) | 1u);
+  StoreInstruction(memory.data(), 12, 0x4E800020);
+  context.r3.s64 = -7;
+  context.r4.u64 = 40;
+  context.r8.s64 = -8;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r5.s64 == -2);
+  REQUIRE(context.r6.s64 == -1);
+  REQUIRE(context.r7.s64 == -8);
+  REQUIRE(context.xer.ca == 0);
+  REQUIRE(context.cr0.lt == 1);
+}

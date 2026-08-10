@@ -189,8 +189,18 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 24: result.opcode = PpcOpcode::kShiftLeftWord; break;
         case 536: result.opcode = PpcOpcode::kShiftRightWord; break;
         case 28: result.opcode = PpcOpcode::kAnd; break;
+        case 60: result.opcode = PpcOpcode::kAndComplement; break;
+        case 412: result.opcode = PpcOpcode::kOrComplement; break;
+        case 476: result.opcode = PpcOpcode::kNand; break;
+        case 124: result.opcode = PpcOpcode::kNor; break;
+        case 284: result.opcode = PpcOpcode::kEquivalent; break;
         case 316: result.opcode = PpcOpcode::kXor; break;
         case 444: result.opcode = PpcOpcode::kOr; break;
+        case 792: result.opcode = PpcOpcode::kShiftRightArithmeticWord; break;
+        case 824:
+          result.opcode = PpcOpcode::kShiftRightArithmeticWordImmediate;
+          result.shift = result.rb;
+          break;
         case 266: result.opcode = PpcOpcode::kAdd; break;
         case 40: result.opcode = PpcOpcode::kSubtractFrom; break;
         case 104: result.opcode = PpcOpcode::kNegate; break;

@@ -61,6 +61,11 @@ enum class PpcOpcode : uint8_t {
   kOr,
   kXor,
   kAnd,
+  kAndComplement,
+  kOrComplement,
+  kNand,
+  kNor,
+  kEquivalent,
   kMoveFromSpr,
   kMoveToSpr,
   kAdd,
@@ -81,6 +86,8 @@ enum class PpcOpcode : uint8_t {
   kRotateLeftWordAndMask,
   kShiftLeftWord,
   kShiftRightWord,
+  kShiftRightArithmeticWord,
+  kShiftRightArithmeticWordImmediate,
 };
 
 struct DecodedPpcInstruction {
