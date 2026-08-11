@@ -80,6 +80,10 @@ CarryResult AddWithCarry(uint64_t left, uint64_t right, bool carry_in) {
   return {value, partial_carry || (carry_in && value == 0)};
 }
 
+bool IsRangeValid(uint32_t address, uint32_t size, uint64_t address_space_size) {
+  return static_cast<uint64_t>(address) + size <= address_space_size;
+}
+
 uint32_t EffectiveAddress(PPCContext& context, const DecodedPpcInstruction& instruction,
                           bool indexed) {
   const uint64_t base = instruction.ra ? Gpr(context, instruction.ra).u64 : 0;
@@ -168,6 +172,9 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
       return {GuestExecutionStatus::kSuccess, pc, 0, count};
     }
 
+    if (!memory_base || !IsRangeValid(pc, 4, address_space_size_)) {
+      return {GuestExecutionStatus::kFault, pc, 0, count};
+    }
     const uint32_t raw = LoadBe32(memory_base + pc);
     const auto instruction = DecodePpcInstruction(raw);
     const uint32_t next_pc = pc + 4;
@@ -227,12 +234,14 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         break;
       case PpcOpcode::kLoadWord: {
         const uint32_t address = EffectiveAddress(context, instruction, false);
+        if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         Gpr(context, instruction.rt).u64 = LoadBe32(memory_base + address);
         pc = next_pc;
         break;
       }
       case PpcOpcode::kLoadWordUpdate: {
         const uint32_t address = EffectiveAddress(context, instruction, false);
+        if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         Gpr(context, instruction.rt).u64 = LoadBe32(memory_base + address);
         Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
@@ -243,6 +252,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
       case PpcOpcode::kLoadWordSignedIndexed:
       case PpcOpcode::kLoadWordSignedIndexedUpdate: {
         const uint32_t address = EffectiveAddress(context, instruction, true);
+        if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         const uint32_t value = LoadBe32(memory_base + address);
         const bool signed_load = instruction.opcode == PpcOpcode::kLoadWordSignedIndexed ||
                                  instruction.opcode == PpcOpcode::kLoadWordSignedIndexedUpdate;
@@ -263,6 +273,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const bool indexed = instruction.opcode == PpcOpcode::kLoadByteIndexed ||
                              instruction.opcode == PpcOpcode::kLoadByteIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 1, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         Gpr(context, instruction.rt).u64 = memory_base[address];
         if (instruction.opcode == PpcOpcode::kLoadByteUpdate ||
             instruction.opcode == PpcOpcode::kLoadByteIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
@@ -281,6 +292,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
                              instruction.opcode == PpcOpcode::kLoadHalfIndexedUpdate ||
                              instruction.opcode == PpcOpcode::kLoadHalfSignedIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 2, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         const uint16_t value = LoadBe16(memory_base + address);
         const bool signed_load = instruction.opcode == PpcOpcode::kLoadHalfSigned ||
                                  instruction.opcode == PpcOpcode::kLoadHalfSignedIndexed ||
@@ -301,6 +313,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const bool indexed = instruction.opcode == PpcOpcode::kLoadDoublewordIndexed ||
                              instruction.opcode == PpcOpcode::kLoadDoublewordIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 8, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         Gpr(context, instruction.rt).u64 = LoadBe64(memory_base + address);
         if (instruction.opcode == PpcOpcode::kLoadDoublewordUpdate ||
             instruction.opcode == PpcOpcode::kLoadDoublewordIndexedUpdate) {
@@ -311,6 +324,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
       }
       case PpcOpcode::kStoreWord: {
         const uint32_t address = EffectiveAddress(context, instruction, false);
+        if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         StoreBe32(memory_base + address, Gpr(context, instruction.rt).u32);
         pc = next_pc;
         break;
@@ -321,6 +335,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const bool indexed = instruction.opcode == PpcOpcode::kStoreWordIndexed ||
                              instruction.opcode == PpcOpcode::kStoreWordIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         StoreBe32(memory_base + address, Gpr(context, instruction.rt).u32);
         if (!indexed || instruction.opcode == PpcOpcode::kStoreWordIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
@@ -333,6 +348,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const bool indexed = instruction.opcode == PpcOpcode::kStoreByteIndexed ||
                              instruction.opcode == PpcOpcode::kStoreByteIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 1, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         memory_base[address] = Gpr(context, instruction.rt).u8;
         if (instruction.opcode == PpcOpcode::kStoreByteUpdate ||
             instruction.opcode == PpcOpcode::kStoreByteIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
@@ -346,6 +362,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const bool indexed = instruction.opcode == PpcOpcode::kStoreHalfIndexed ||
                              instruction.opcode == PpcOpcode::kStoreHalfIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 2, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         StoreBe16(memory_base + address, Gpr(context, instruction.rt).u16);
         if (instruction.opcode == PpcOpcode::kStoreHalfUpdate ||
             instruction.opcode == PpcOpcode::kStoreHalfIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
@@ -359,6 +376,7 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         const bool indexed = instruction.opcode == PpcOpcode::kStoreDoublewordIndexed ||
                              instruction.opcode == PpcOpcode::kStoreDoublewordIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        if (!IsRangeValid(address, 8, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         StoreBe64(memory_base + address, Gpr(context, instruction.rt).u64);
         if (instruction.opcode == PpcOpcode::kStoreDoublewordUpdate ||
             instruction.opcode == PpcOpcode::kStoreDoublewordIndexedUpdate) {

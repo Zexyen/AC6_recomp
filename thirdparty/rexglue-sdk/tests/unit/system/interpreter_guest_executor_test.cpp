@@ -762,3 +762,26 @@ TEST_CASE("PPC interpreter executes indexed update memory variants",
   REQUIRE(context.r16.u64 == 0x0123456789ABCDEF);
   REQUIRE(context.r17.u64 == 0x128);
 }
+
+TEST_CASE("PPC interpreter reports bounded instruction and data memory faults",
+          "[system][interpreter]") {
+  std::array<uint8_t, 32> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(8, memory.size());
+
+  auto fetch_fault = executor.Execute(context, memory.data(), 32);
+  REQUIRE(fetch_fault.status == rex::runtime::GuestExecutionStatus::kFault);
+  REQUIRE(fetch_fault.guest_address == 32);
+  REQUIRE(fetch_fault.instructions_executed == 0);
+
+  StoreInstruction(memory.data(), 0, DForm(32, 3, 0, 30));
+  auto data_fault = executor.Execute(context, memory.data(), 0);
+  REQUIRE(data_fault.status == rex::runtime::GuestExecutionStatus::kFault);
+  REQUIRE(data_fault.guest_address == 0);
+  REQUIRE(data_fault.instruction == DForm(32, 3, 0, 30));
+  REQUIRE(data_fault.instructions_executed == 1);
+
+  auto null_fault = executor.Execute(context, nullptr, 0);
+  REQUIRE(null_fault.status == rex::runtime::GuestExecutionStatus::kFault);
+  REQUIRE(null_fault.instructions_executed == 0);
+}
