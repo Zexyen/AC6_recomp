@@ -960,3 +960,28 @@ TEST_CASE("PPC interpreter executes atomic reservation operations",
   REQUIRE(std::byteswap(word) == 0xAABBCCDD);
   REQUIRE(std::byteswap(doubleword) == 0x0102030405060708);
 }
+
+TEST_CASE("PPC interpreter transfers condition registers and executes barriers",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, XForm(3, 0, 0, 19));
+  StoreInstruction(memory.data(), 4,
+                   (31u << 26) | (4u << 21) | (0x81u << 12) | (144u << 1));
+  StoreInstruction(memory.data(), 8, XForm(0, 0, 0, 598));
+  StoreInstruction(memory.data(), 12, XLForm(0, 0, 150));
+  StoreInstruction(memory.data(), 16, 0x4E800020);
+  context.cr0.set_raw(0xA);
+  context.cr7.set_raw(0x5);
+  context.r4.u64 = 0x3000000C;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r3.u64 == 0xA0000005);
+  REQUIRE(context.cr0.raw() == 3);
+  REQUIRE(context.cr7.raw() == 0xC);
+}

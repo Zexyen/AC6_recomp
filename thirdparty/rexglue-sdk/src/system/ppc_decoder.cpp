@@ -278,6 +278,7 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       switch ((raw >> 1) & 0x3FF) {
         case 16: result.opcode = PpcOpcode::kBranchConditionalToLinkRegister; break;
         case 528: result.opcode = PpcOpcode::kBranchConditionalToCountRegister; break;
+        case 150: result.opcode = PpcOpcode::kInstructionSynchronize; break;
         case 257: result.opcode = PpcOpcode::kCrAnd; break;
         case 129: result.opcode = PpcOpcode::kCrAndComplement; break;
         case 289: result.opcode = PpcOpcode::kCrEquivalent; break;
@@ -382,6 +383,12 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
           result.opcode = PpcOpcode::kMoveFromSpr;
           result.spr = static_cast<uint16_t>(((raw >> 16) & 31) | (((raw >> 11) & 31) << 5));
           break;
+        case 19: result.opcode = PpcOpcode::kMoveFromConditionRegister; break;
+        case 144:
+          result.opcode = PpcOpcode::kMoveToConditionRegisterFields;
+          result.immediate = static_cast<int32_t>((raw >> 12) & 0xFF);
+          break;
+        case 598: result.opcode = PpcOpcode::kSynchronize; break;
         case 467:
           result.opcode = PpcOpcode::kMoveToSpr;
           result.spr = static_cast<uint16_t>(((raw >> 16) & 31) | (((raw >> 11) & 31) << 5));

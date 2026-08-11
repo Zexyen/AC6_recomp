@@ -977,10 +977,34 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kMoveFromConditionRegister: {
+        uint32_t value = 0;
+        for (uint8_t field = 0; field < 8; ++field) {
+          value |= CrField(context, field).raw() << (28 - field * 4);
+        }
+        Gpr(context, instruction.rt).u64 = value;
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kMoveToConditionRegisterFields: {
+        const uint32_t value = Gpr(context, instruction.rt).u32;
+        const uint8_t mask = static_cast<uint8_t>(instruction.immediate);
+        for (uint8_t field = 0; field < 8; ++field) {
+          if ((mask & (uint8_t{0x80} >> field)) != 0) {
+            CrField(context, field).set_raw((value >> (28 - field * 4)) & 0xF);
+          }
+        }
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kMoveToSpr:
         if (!WriteSpr(context, instruction.spr, Gpr(context, instruction.rt).u64)) {
           return {GuestExecutionStatus::kFault, pc, raw, count};
         }
+        pc = next_pc;
+        break;
+      case PpcOpcode::kSynchronize:
+      case PpcOpcode::kInstructionSynchronize:
         pc = next_pc;
         break;
       case PpcOpcode::kUnknown:
