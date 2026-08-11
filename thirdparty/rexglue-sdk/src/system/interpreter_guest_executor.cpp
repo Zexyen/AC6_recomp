@@ -1119,6 +1119,48 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kVectorAddFloat:
+      case PpcOpcode::kVectorSubtractFloat:
+      case PpcOpcode::kVectorMaximumFloat:
+      case PpcOpcode::kVectorMinimumFloat: {
+        auto& destination = Vpr(context, instruction.rt);
+        const auto& left = Vpr(context, instruction.ra);
+        const auto& right = Vpr(context, instruction.rb);
+        for (uint8_t lane = 0; lane < 4; ++lane) {
+          if (instruction.opcode == PpcOpcode::kVectorAddFloat) destination.f32[lane] = left.f32[lane] + right.f32[lane];
+          else if (instruction.opcode == PpcOpcode::kVectorSubtractFloat) destination.f32[lane] = left.f32[lane] - right.f32[lane];
+          else if (instruction.opcode == PpcOpcode::kVectorMaximumFloat) destination.f32[lane] = std::fmax(left.f32[lane], right.f32[lane]);
+          else destination.f32[lane] = std::fmin(left.f32[lane], right.f32[lane]);
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kVectorMergeHighByte:
+      case PpcOpcode::kVectorMergeLowByte: {
+        auto& destination = Vpr(context, instruction.rt);
+        const auto left = Vpr(context, instruction.ra);
+        const auto right = Vpr(context, instruction.rb);
+        const uint8_t start = instruction.opcode == PpcOpcode::kVectorMergeHighByte ? 8 : 0;
+        for (uint8_t lane = 0; lane < 8; ++lane) {
+          destination.u8[lane * 2] = left.u8[start + lane];
+          destination.u8[lane * 2 + 1] = right.u8[start + lane];
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kVectorSelect: {
+        auto& destination = Vpr(context, instruction.rt);
+        const auto& left = Vpr(context, instruction.ra);
+        const auto& right = Vpr(context, instruction.rb);
+        const auto& mask = Vpr(context, instruction.rc);
+        for (uint8_t lane = 0; lane < 2; ++lane) {
+          destination.u64[lane] =
+              (left.u64[lane] & ~mask.u64[lane]) |
+              (right.u64[lane] & mask.u64[lane]);
+        }
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kUnknown:
         return {GuestExecutionStatus::kFault, pc, raw, count};
     }

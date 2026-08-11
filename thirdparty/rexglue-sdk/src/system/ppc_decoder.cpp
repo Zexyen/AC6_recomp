@@ -19,6 +19,12 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
 
   switch (raw >> 26) {
     case 4:
+      result.rc = static_cast<uint8_t>((raw >> 6) & 31);
+      switch (raw & 0x3F) {
+        case 44: result.opcode = PpcOpcode::kVectorSelect; break;
+        default: break;
+      }
+      if (result.opcode != PpcOpcode::kUnknown) break;
       switch (raw & 0x7FF) {
         case 0: result.opcode = PpcOpcode::kVectorAddByteModulo; break;
         case 64: result.opcode = PpcOpcode::kVectorAddHalfwordModulo; break;
@@ -31,6 +37,12 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 1156: result.opcode = PpcOpcode::kVectorOr; break;
         case 1220: result.opcode = PpcOpcode::kVectorXor; break;
         case 1284: result.opcode = PpcOpcode::kVectorNor; break;
+        case 10: result.opcode = PpcOpcode::kVectorAddFloat; break;
+        case 74: result.opcode = PpcOpcode::kVectorSubtractFloat; break;
+        case 1034: result.opcode = PpcOpcode::kVectorMaximumFloat; break;
+        case 1098: result.opcode = PpcOpcode::kVectorMinimumFloat; break;
+        case 12: result.opcode = PpcOpcode::kVectorMergeHighByte; break;
+        case 268: result.opcode = PpcOpcode::kVectorMergeLowByte; break;
         default: break;
       }
       break;

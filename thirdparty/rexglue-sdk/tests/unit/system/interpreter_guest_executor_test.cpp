@@ -58,6 +58,12 @@ constexpr uint32_t VectorForm(uint32_t vd, uint32_t va, uint32_t vb,
   return (4u << 26) | (vd << 21) | (va << 16) | (vb << 11) | xo;
 }
 
+constexpr uint32_t VectorAForm(uint32_t vd, uint32_t va, uint32_t vb,
+                               uint32_t vc, uint32_t xo) {
+  return (4u << 26) | (vd << 21) | (va << 16) | (vb << 11) |
+         (vc << 6) | xo;
+}
+
 constexpr uint32_t BForm(uint32_t bo, uint32_t bi, int16_t displacement) {
   return (16u << 26) | (bo << 21) | (bi << 16) |
          (static_cast<uint16_t>(displacement) & 0xFFFC);
@@ -1061,4 +1067,37 @@ TEST_CASE("PPC interpreter executes foundational VMX operations",
   REQUIRE(context.v3.u8[0] == 15);
   REQUIRE(memory[0x90] == 0);
   REQUIRE(memory[0x9F] == 17);
+}
+
+TEST_CASE("PPC interpreter executes VMX floating merge and selection operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, VectorForm(4, 1, 2, 10));
+  StoreInstruction(memory.data(), 4, VectorForm(5, 1, 2, 74));
+  StoreInstruction(memory.data(), 8, VectorForm(6, 1, 2, 1034));
+  StoreInstruction(memory.data(), 12, VectorForm(7, 1, 2, 12));
+  StoreInstruction(memory.data(), 16, VectorAForm(8, 1, 2, 3, 44));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  for (uint8_t lane = 0; lane < 4; ++lane) {
+    context.v1.f32[lane] = static_cast<float>(lane + 1);
+    context.v2.f32[lane] = static_cast<float>(10 - lane);
+  }
+  context.v3.u64[0] = UINT64_MAX;
+  context.v3.u64[1] = 0;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.v4.f32[0] == 11.0f);
+  REQUIRE(context.v4.f32[3] == 11.0f);
+  REQUIRE(context.v5.f32[0] == -9.0f);
+  REQUIRE(context.v6.f32[3] == 7.0f);
+  REQUIRE(context.v7.u8[0] == context.v1.u8[8]);
+  REQUIRE(context.v7.u8[1] == context.v2.u8[8]);
+  REQUIRE(context.v8.u64[0] == context.v2.u64[0]);
+  REQUIRE(context.v8.u64[1] == context.v1.u64[1]);
 }
