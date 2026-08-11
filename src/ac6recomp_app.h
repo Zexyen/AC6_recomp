@@ -17,6 +17,12 @@ class Ac6recompApp : public rex::ReXApp {
   }
 
  protected:
+  void OnPreSetup(rex::RuntimeConfig& config) override {
+    rex::ReXApp::OnPreSetup(config);
+    config.expected_xex_sha256 =
+        "6eefba42cdfe9121207e534d8d290009c98b1a8c60ae5334a33a4f15167cbbbc";
+  }
+
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
     rex::ReXApp::OnCreateDialogs(drawer);
     native_graphics_status_dialog_ =
@@ -27,4 +33,3 @@ class Ac6recompApp : public rex::ReXApp {
  private:
   std::unique_ptr<ac6::graphics::NativeGraphicsStatusDialog> native_graphics_status_dialog_;
 };
-
