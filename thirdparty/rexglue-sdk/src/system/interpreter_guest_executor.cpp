@@ -41,6 +41,22 @@ PPCRegister& Fpr(PPCContext& context, uint8_t index) {
   }
 }
 
+PPCVRegister& Vpr(PPCContext& context, uint8_t index) {
+  switch (index) {
+#define REX_VPR_CASE(n) case n: return context.v##n
+    REX_VPR_CASE(0); REX_VPR_CASE(1); REX_VPR_CASE(2); REX_VPR_CASE(3);
+    REX_VPR_CASE(4); REX_VPR_CASE(5); REX_VPR_CASE(6); REX_VPR_CASE(7);
+    REX_VPR_CASE(8); REX_VPR_CASE(9); REX_VPR_CASE(10); REX_VPR_CASE(11);
+    REX_VPR_CASE(12); REX_VPR_CASE(13); REX_VPR_CASE(14); REX_VPR_CASE(15);
+    REX_VPR_CASE(16); REX_VPR_CASE(17); REX_VPR_CASE(18); REX_VPR_CASE(19);
+    REX_VPR_CASE(20); REX_VPR_CASE(21); REX_VPR_CASE(22); REX_VPR_CASE(23);
+    REX_VPR_CASE(24); REX_VPR_CASE(25); REX_VPR_CASE(26); REX_VPR_CASE(27);
+    REX_VPR_CASE(28); REX_VPR_CASE(29); REX_VPR_CASE(30); REX_VPR_CASE(31);
+#undef REX_VPR_CASE
+    default: return context.v0;
+  }
+}
+
 uint32_t LoadBe32(const uint8_t* address) {
   uint32_t value;
   std::memcpy(&value, address, sizeof(value));
@@ -1041,6 +1057,65 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
           return {GuestExecutionStatus::kFault, pc, raw, count};
         }
         std::memset(memory_base + address, 0, 128);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kVectorLoadIndexed:
+      case PpcOpcode::kVectorStoreIndexed: {
+        const uint32_t address = EffectiveAddress(context, instruction, true) & ~uint32_t{15};
+        if (!IsRangeValid(address, 16, address_space_size_)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        auto& vector = Vpr(context, instruction.rt);
+        for (uint8_t byte = 0; byte < 16; ++byte) {
+          if (instruction.opcode == PpcOpcode::kVectorLoadIndexed) {
+            vector.u8[15 - byte] = memory_base[address + byte];
+          } else {
+            memory_base[address + byte] = vector.u8[15 - byte];
+          }
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kVectorAnd:
+      case PpcOpcode::kVectorAndComplement:
+      case PpcOpcode::kVectorOr:
+      case PpcOpcode::kVectorXor:
+      case PpcOpcode::kVectorNor: {
+        auto& destination = Vpr(context, instruction.rt);
+        const auto& left = Vpr(context, instruction.ra);
+        const auto& right = Vpr(context, instruction.rb);
+        for (uint8_t lane = 0; lane < 2; ++lane) {
+          if (instruction.opcode == PpcOpcode::kVectorAnd) destination.u64[lane] = left.u64[lane] & right.u64[lane];
+          else if (instruction.opcode == PpcOpcode::kVectorAndComplement) destination.u64[lane] = left.u64[lane] & ~right.u64[lane];
+          else if (instruction.opcode == PpcOpcode::kVectorOr) destination.u64[lane] = left.u64[lane] | right.u64[lane];
+          else if (instruction.opcode == PpcOpcode::kVectorXor) destination.u64[lane] = left.u64[lane] ^ right.u64[lane];
+          else destination.u64[lane] = ~(left.u64[lane] | right.u64[lane]);
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kVectorAddByteModulo:
+      case PpcOpcode::kVectorSubtractByteModulo:
+      case PpcOpcode::kVectorAddHalfwordModulo:
+      case PpcOpcode::kVectorSubtractHalfwordModulo:
+      case PpcOpcode::kVectorAddWordModulo:
+      case PpcOpcode::kVectorSubtractWordModulo: {
+        auto& destination = Vpr(context, instruction.rt);
+        const auto& left = Vpr(context, instruction.ra);
+        const auto& right = Vpr(context, instruction.rb);
+        const bool subtract = instruction.opcode == PpcOpcode::kVectorSubtractByteModulo ||
+                              instruction.opcode == PpcOpcode::kVectorSubtractHalfwordModulo ||
+                              instruction.opcode == PpcOpcode::kVectorSubtractWordModulo;
+        if (instruction.opcode == PpcOpcode::kVectorAddByteModulo ||
+            instruction.opcode == PpcOpcode::kVectorSubtractByteModulo) {
+          for (uint8_t lane = 0; lane < 16; ++lane) destination.u8[lane] = subtract ? left.u8[lane] - right.u8[lane] : left.u8[lane] + right.u8[lane];
+        } else if (instruction.opcode == PpcOpcode::kVectorAddHalfwordModulo ||
+                   instruction.opcode == PpcOpcode::kVectorSubtractHalfwordModulo) {
+          for (uint8_t lane = 0; lane < 8; ++lane) destination.u16[lane] = subtract ? left.u16[lane] - right.u16[lane] : left.u16[lane] + right.u16[lane];
+        } else {
+          for (uint8_t lane = 0; lane < 4; ++lane) destination.u32[lane] = subtract ? left.u32[lane] - right.u32[lane] : left.u32[lane] + right.u32[lane];
+        }
         pc = next_pc;
         break;
       }

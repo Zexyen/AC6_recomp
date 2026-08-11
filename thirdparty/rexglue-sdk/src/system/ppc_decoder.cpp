@@ -18,6 +18,22 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
   result.rb = static_cast<uint8_t>((raw >> 11) & 31);
 
   switch (raw >> 26) {
+    case 4:
+      switch (raw & 0x7FF) {
+        case 0: result.opcode = PpcOpcode::kVectorAddByteModulo; break;
+        case 64: result.opcode = PpcOpcode::kVectorAddHalfwordModulo; break;
+        case 128: result.opcode = PpcOpcode::kVectorAddWordModulo; break;
+        case 1024: result.opcode = PpcOpcode::kVectorSubtractByteModulo; break;
+        case 1028: result.opcode = PpcOpcode::kVectorAnd; break;
+        case 1088: result.opcode = PpcOpcode::kVectorSubtractHalfwordModulo; break;
+        case 1092: result.opcode = PpcOpcode::kVectorAndComplement; break;
+        case 1152: result.opcode = PpcOpcode::kVectorSubtractWordModulo; break;
+        case 1156: result.opcode = PpcOpcode::kVectorOr; break;
+        case 1220: result.opcode = PpcOpcode::kVectorXor; break;
+        case 1284: result.opcode = PpcOpcode::kVectorNor; break;
+        default: break;
+      }
+      break;
     case 8:
       result.opcode = PpcOpcode::kSubtractFromImmediateCarrying;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
@@ -402,6 +418,8 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 982:
           result.opcode = PpcOpcode::kCacheOperation;
           break;
+        case 103: result.opcode = PpcOpcode::kVectorLoadIndexed; break;
+        case 231: result.opcode = PpcOpcode::kVectorStoreIndexed; break;
         case 467:
           result.opcode = PpcOpcode::kMoveToSpr;
           result.spr = static_cast<uint16_t>(((raw >> 16) & 31) | (((raw >> 11) & 31) << 5));

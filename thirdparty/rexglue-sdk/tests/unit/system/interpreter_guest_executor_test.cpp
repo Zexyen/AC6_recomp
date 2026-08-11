@@ -53,6 +53,11 @@ constexpr uint32_t FloatAForm(uint32_t primary, uint32_t ft, uint32_t fa,
          (fc << 6) | (xo << 1);
 }
 
+constexpr uint32_t VectorForm(uint32_t vd, uint32_t va, uint32_t vb,
+                              uint32_t xo) {
+  return (4u << 26) | (vd << 21) | (va << 16) | (vb << 11) | xo;
+}
+
 constexpr uint32_t BForm(uint32_t bo, uint32_t bi, int16_t displacement) {
   return (16u << 26) | (bo << 21) | (bi << 16) |
          (static_cast<uint16_t>(displacement) & 0xFFFC);
@@ -1024,4 +1029,36 @@ TEST_CASE("PPC interpreter executes byte-reversed and cache memory operations",
   REQUIRE(memory[0x111] == 0xE5);
   REQUIRE(memory[0x180] == 0);
   REQUIRE(memory[0x1FF] == 0);
+}
+
+TEST_CASE("PPC interpreter executes foundational VMX operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 256> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(9, memory.size());
+
+  StoreInstruction(memory.data(), 0, XForm(1, 3, 4, 103));
+  StoreInstruction(memory.data(), 4, VectorForm(2, 1, 1, 0));
+  StoreInstruction(memory.data(), 8, VectorForm(3, 2, 1, 1024));
+  StoreInstruction(memory.data(), 12, VectorForm(4, 2, 3, 1220));
+  StoreInstruction(memory.data(), 16, XForm(4, 5, 6, 231));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r3.u64 = 0x80;
+  context.r4.u64 = 3;
+  context.r5.u64 = 0x90;
+  context.r6.u64 = 7;
+  for (uint8_t byte = 0; byte < 16; ++byte) memory[0x80 + byte] = byte;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.v1.u8[15] == 0);
+  REQUIRE(context.v1.u8[0] == 15);
+  REQUIRE(context.v2.u8[15] == 0);
+  REQUIRE(context.v2.u8[0] == 30);
+  REQUIRE(context.v3.u8[15] == 0);
+  REQUIRE(context.v3.u8[0] == 15);
+  REQUIRE(memory[0x90] == 0);
+  REQUIRE(memory[0x9F] == 17);
 }
