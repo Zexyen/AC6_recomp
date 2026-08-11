@@ -315,6 +315,8 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 375: result.opcode = PpcOpcode::kLoadHalfSignedIndexedUpdate; break;
         case 21: result.opcode = PpcOpcode::kLoadDoublewordIndexed; break;
         case 53: result.opcode = PpcOpcode::kLoadDoublewordIndexedUpdate; break;
+        case 20: result.opcode = PpcOpcode::kLoadWordAndReserveIndexed; break;
+        case 84: result.opcode = PpcOpcode::kLoadDoublewordAndReserveIndexed; break;
         case 151: result.opcode = PpcOpcode::kStoreWordIndexed; break;
         case 183: result.opcode = PpcOpcode::kStoreWordIndexedUpdate; break;
         case 215: result.opcode = PpcOpcode::kStoreByteIndexed; break;
@@ -323,6 +325,8 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 439: result.opcode = PpcOpcode::kStoreHalfIndexedUpdate; break;
         case 149: result.opcode = PpcOpcode::kStoreDoublewordIndexed; break;
         case 181: result.opcode = PpcOpcode::kStoreDoublewordIndexedUpdate; break;
+        case 150: result.opcode = PpcOpcode::kStoreWordConditionalIndexed; break;
+        case 214: result.opcode = PpcOpcode::kStoreDoublewordConditionalIndexed; break;
         case 535: result.opcode = PpcOpcode::kLoadFloatSingleIndexed; break;
         case 567: result.opcode = PpcOpcode::kLoadFloatSingleIndexedUpdate; break;
         case 599: result.opcode = PpcOpcode::kLoadFloatDoubleIndexed; break;

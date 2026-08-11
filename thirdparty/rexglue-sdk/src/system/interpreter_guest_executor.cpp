@@ -339,6 +339,21 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kLoadWordAndReserveIndexed:
+      case PpcOpcode::kLoadDoublewordAndReserveIndexed: {
+        const uint32_t address = EffectiveAddress(context, instruction, true);
+        const bool doubleword = instruction.opcode == PpcOpcode::kLoadDoublewordAndReserveIndexed;
+        const uint32_t size = doubleword ? 8 : 4;
+        if (!IsRangeValid(address, size, address_space_size_)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        Gpr(context, instruction.rt).u64 =
+            doubleword ? LoadBe64(memory_base + address)
+                       : LoadBe32(memory_base + address);
+        context.reserved.u64 = (uint64_t{1} << 63) | address;
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kStoreWord: {
         const uint32_t address = EffectiveAddress(context, instruction, false);
         if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
@@ -399,6 +414,30 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
             instruction.opcode == PpcOpcode::kStoreDoublewordIndexedUpdate) {
           Gpr(context, instruction.ra).u64 = address;
         }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kStoreWordConditionalIndexed:
+      case PpcOpcode::kStoreDoublewordConditionalIndexed: {
+        const uint32_t address = EffectiveAddress(context, instruction, true);
+        const bool doubleword = instruction.opcode == PpcOpcode::kStoreDoublewordConditionalIndexed;
+        const uint32_t size = doubleword ? 8 : 4;
+        if (!IsRangeValid(address, size, address_space_size_)) {
+          context.reserved.u64 = 0;
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        const bool succeeded =
+            (context.reserved.u64 & (uint64_t{1} << 63)) != 0 &&
+            static_cast<uint32_t>(context.reserved.u64) == address;
+        context.reserved.u64 = 0;
+        if (succeeded) {
+          if (doubleword) StoreBe64(memory_base + address, Gpr(context, instruction.rt).u64);
+          else StoreBe32(memory_base + address, Gpr(context, instruction.rt).u32);
+        }
+        context.cr0.lt = 0;
+        context.cr0.gt = 0;
+        context.cr0.eq = succeeded;
+        context.cr0.so = context.xer.so;
         pc = next_pc;
         break;
       }

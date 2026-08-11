@@ -924,3 +924,39 @@ TEST_CASE("PPC interpreter executes fused floating-point arithmetic and selectio
   REQUIRE(context.f7.f64 == -5.0);
   REQUIRE(context.f8.f64 == 5.0);
 }
+
+TEST_CASE("PPC interpreter executes atomic reservation operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 256> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(9, memory.size());
+
+  StoreInstruction(memory.data(), 0, XForm(3, 4, 5, 20));
+  StoreInstruction(memory.data(), 4, XForm(6, 4, 5, 150) | 1);
+  StoreInstruction(memory.data(), 8, XForm(7, 4, 5, 150) | 1);
+  StoreInstruction(memory.data(), 12, XForm(8, 4, 9, 84));
+  StoreInstruction(memory.data(), 16, XForm(10, 4, 9, 214) | 1);
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r4.u64 = 0x80;
+  context.r5.u64 = 4;
+  context.r6.u64 = 0xAABBCCDD;
+  context.r7.u64 = 0x11223344;
+  context.r9.u64 = 8;
+  context.r10.u64 = 0x0102030405060708;
+  uint32_t word = std::byteswap(uint32_t{0x12345678});
+  uint64_t doubleword = std::byteswap(uint64_t{0x8877665544332211});
+  std::memcpy(memory.data() + 0x84, &word, sizeof(word));
+  std::memcpy(memory.data() + 0x88, &doubleword, sizeof(doubleword));
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r3.u64 == 0x12345678);
+  REQUIRE(context.r8.u64 == 0x8877665544332211);
+  REQUIRE(context.cr0.eq == 1);
+  std::memcpy(&word, memory.data() + 0x84, sizeof(word));
+  std::memcpy(&doubleword, memory.data() + 0x88, sizeof(doubleword));
+  REQUIRE(std::byteswap(word) == 0xAABBCCDD);
+  REQUIRE(std::byteswap(doubleword) == 0x0102030405060708);
+}
