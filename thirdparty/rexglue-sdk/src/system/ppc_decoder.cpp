@@ -318,6 +318,8 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 53: result.opcode = PpcOpcode::kLoadDoublewordIndexedUpdate; break;
         case 20: result.opcode = PpcOpcode::kLoadWordAndReserveIndexed; break;
         case 84: result.opcode = PpcOpcode::kLoadDoublewordAndReserveIndexed; break;
+        case 534: result.opcode = PpcOpcode::kLoadWordByteReversedIndexed; break;
+        case 790: result.opcode = PpcOpcode::kLoadHalfByteReversedIndexed; break;
         case 151: result.opcode = PpcOpcode::kStoreWordIndexed; break;
         case 183: result.opcode = PpcOpcode::kStoreWordIndexedUpdate; break;
         case 215: result.opcode = PpcOpcode::kStoreByteIndexed; break;
@@ -328,6 +330,8 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 181: result.opcode = PpcOpcode::kStoreDoublewordIndexedUpdate; break;
         case 150: result.opcode = PpcOpcode::kStoreWordConditionalIndexed; break;
         case 214: result.opcode = PpcOpcode::kStoreDoublewordConditionalIndexed; break;
+        case 662: result.opcode = PpcOpcode::kStoreWordByteReversedIndexed; break;
+        case 918: result.opcode = PpcOpcode::kStoreHalfByteReversedIndexed; break;
         case 535: result.opcode = PpcOpcode::kLoadFloatSingleIndexed; break;
         case 567: result.opcode = PpcOpcode::kLoadFloatSingleIndexedUpdate; break;
         case 599: result.opcode = PpcOpcode::kLoadFloatDoubleIndexed; break;
@@ -389,6 +393,15 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
           result.immediate = static_cast<int32_t>((raw >> 12) & 0xFF);
           break;
         case 598: result.opcode = PpcOpcode::kSynchronize; break;
+        case 1014: result.opcode = PpcOpcode::kCacheBlockZero; break;
+        case 54:
+        case 86:
+        case 246:
+        case 278:
+        case 854:
+        case 982:
+          result.opcode = PpcOpcode::kCacheOperation;
+          break;
         case 467:
           result.opcode = PpcOpcode::kMoveToSpr;
           result.spr = static_cast<uint16_t>(((raw >> 16) & 31) | (((raw >> 11) & 31) << 5));

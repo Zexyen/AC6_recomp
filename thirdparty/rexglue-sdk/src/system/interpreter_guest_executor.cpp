@@ -354,6 +354,20 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kLoadHalfByteReversedIndexed:
+      case PpcOpcode::kLoadWordByteReversedIndexed: {
+        const uint32_t address = EffectiveAddress(context, instruction, true);
+        const bool word = instruction.opcode == PpcOpcode::kLoadWordByteReversedIndexed;
+        const uint32_t size = word ? 4 : 2;
+        if (!IsRangeValid(address, size, address_space_size_)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        Gpr(context, instruction.rt).u64 =
+            word ? std::byteswap(LoadBe32(memory_base + address))
+                 : std::byteswap(LoadBe16(memory_base + address));
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kStoreWord: {
         const uint32_t address = EffectiveAddress(context, instruction, false);
         if (!IsRangeValid(address, 4, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
@@ -438,6 +452,19 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         context.cr0.gt = 0;
         context.cr0.eq = succeeded;
         context.cr0.so = context.xer.so;
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kStoreHalfByteReversedIndexed:
+      case PpcOpcode::kStoreWordByteReversedIndexed: {
+        const uint32_t address = EffectiveAddress(context, instruction, true);
+        const bool word = instruction.opcode == PpcOpcode::kStoreWordByteReversedIndexed;
+        const uint32_t size = word ? 4 : 2;
+        if (!IsRangeValid(address, size, address_space_size_)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        if (word) StoreBe32(memory_base + address, std::byteswap(Gpr(context, instruction.rt).u32));
+        else StoreBe16(memory_base + address, std::byteswap(Gpr(context, instruction.rt).u16));
         pc = next_pc;
         break;
       }
@@ -1005,8 +1032,18 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         break;
       case PpcOpcode::kSynchronize:
       case PpcOpcode::kInstructionSynchronize:
+      case PpcOpcode::kCacheOperation:
         pc = next_pc;
         break;
+      case PpcOpcode::kCacheBlockZero: {
+        const uint32_t address = EffectiveAddress(context, instruction, true) & ~uint32_t{127};
+        if (!IsRangeValid(address, 128, address_space_size_)) {
+          return {GuestExecutionStatus::kFault, pc, raw, count};
+        }
+        std::memset(memory_base + address, 0, 128);
+        pc = next_pc;
+        break;
+      }
       case PpcOpcode::kUnknown:
         return {GuestExecutionStatus::kFault, pc, raw, count};
     }

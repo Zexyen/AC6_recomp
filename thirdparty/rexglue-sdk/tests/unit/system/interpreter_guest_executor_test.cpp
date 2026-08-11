@@ -985,3 +985,43 @@ TEST_CASE("PPC interpreter transfers condition registers and executes barriers",
   REQUIRE(context.cr0.raw() == 3);
   REQUIRE(context.cr7.raw() == 0xC);
 }
+
+TEST_CASE("PPC interpreter executes byte-reversed and cache memory operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 512> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(8, memory.size());
+
+  StoreInstruction(memory.data(), 0, XForm(3, 4, 5, 534));
+  StoreInstruction(memory.data(), 4, XForm(6, 4, 7, 790));
+  StoreInstruction(memory.data(), 8, XForm(8, 4, 9, 662));
+  StoreInstruction(memory.data(), 12, XForm(10, 4, 11, 918));
+  StoreInstruction(memory.data(), 16, XForm(0, 12, 13, 1014));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r4.u64 = 0x100;
+  context.r5.u64 = 4;
+  context.r7.u64 = 8;
+  context.r9.u64 = 12;
+  context.r11.u64 = 16;
+  context.r12.u64 = 0x180;
+  context.r13.u64 = 4;
+  context.r8.u64 = 0xA1B2C3D4;
+  context.r10.u64 = 0xE5F6;
+  memory[0x104] = 0x78; memory[0x105] = 0x56;
+  memory[0x106] = 0x34; memory[0x107] = 0x12;
+  memory[0x108] = 0xCD; memory[0x109] = 0xAB;
+  std::memset(memory.data() + 0x180, 0xFF, 128);
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r3.u64 == 0x12345678);
+  REQUIRE(context.r6.u64 == 0xABCD);
+  REQUIRE(memory[0x10C] == 0xD4);
+  REQUIRE(memory[0x10F] == 0xA1);
+  REQUIRE(memory[0x110] == 0xF6);
+  REQUIRE(memory[0x111] == 0xE5);
+  REQUIRE(memory[0x180] == 0);
+  REQUIRE(memory[0x1FF] == 0);
+}
