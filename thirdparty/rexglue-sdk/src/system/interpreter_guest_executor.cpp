@@ -207,13 +207,22 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       case PpcOpcode::kOrImmediate:
+      case PpcOpcode::kOrImmediateShifted:
         Gpr(context, instruction.ra).u64 =
             Gpr(context, instruction.rt).u64 | static_cast<uint32_t>(instruction.immediate);
         pc = next_pc;
         break;
       case PpcOpcode::kXorImmediate:
+      case PpcOpcode::kXorImmediateShifted:
         Gpr(context, instruction.ra).u64 =
             Gpr(context, instruction.rt).u64 ^ static_cast<uint32_t>(instruction.immediate);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kAndImmediate:
+      case PpcOpcode::kAndImmediateShifted:
+        Gpr(context, instruction.ra).u64 =
+            Gpr(context, instruction.rt).u64 & static_cast<uint32_t>(instruction.immediate);
+        UpdateCr0(context, Gpr(context, instruction.ra).u64);
         pc = next_pc;
         break;
       case PpcOpcode::kLoadWord: {
@@ -629,6 +638,20 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         context.xer.ca = source < 0 && (Gpr(context, instruction.rt).u32 & discarded_mask) != 0;
         Gpr(context, instruction.ra).s64 = source >> shift;
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.ra).u64);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kShiftLeftDoubleword:
+      case PpcOpcode::kShiftRightDoubleword: {
+        const uint32_t shift = Gpr(context, instruction.rb).u32 & 127;
+        uint64_t value = 0;
+        if (shift < 64) {
+          value = instruction.opcode == PpcOpcode::kShiftLeftDoubleword
+                      ? Gpr(context, instruction.rt).u64 << shift
+                      : Gpr(context, instruction.rt).u64 >> shift;
+        }
+        Gpr(context, instruction.ra).u64 = value;
+        if (instruction.record) UpdateCr0(context, value);
         pc = next_pc;
         break;
       }

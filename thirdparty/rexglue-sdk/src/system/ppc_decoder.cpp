@@ -44,9 +44,27 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.opcode = PpcOpcode::kOrImmediate;
       result.immediate = static_cast<int32_t>(raw & 0xFFFF);
       break;
+    case 25:
+      result.opcode = PpcOpcode::kOrImmediateShifted;
+      result.immediate = static_cast<int32_t>((raw & 0xFFFF) << 16);
+      break;
     case 26:
       result.opcode = PpcOpcode::kXorImmediate;
       result.immediate = static_cast<int32_t>(raw & 0xFFFF);
+      break;
+    case 27:
+      result.opcode = PpcOpcode::kXorImmediateShifted;
+      result.immediate = static_cast<int32_t>((raw & 0xFFFF) << 16);
+      break;
+    case 28:
+      result.opcode = PpcOpcode::kAndImmediate;
+      result.immediate = static_cast<int32_t>(raw & 0xFFFF);
+      result.record = true;
+      break;
+    case 29:
+      result.opcode = PpcOpcode::kAndImmediateShifted;
+      result.immediate = static_cast<int32_t>((raw & 0xFFFF) << 16);
+      result.record = true;
       break;
     case 21:
       result.opcode = PpcOpcode::kRotateLeftWordImmediateAndMask;
@@ -198,6 +216,8 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 149: result.opcode = PpcOpcode::kStoreDoublewordIndexed; break;
         case 24: result.opcode = PpcOpcode::kShiftLeftWord; break;
         case 536: result.opcode = PpcOpcode::kShiftRightWord; break;
+        case 27: result.opcode = PpcOpcode::kShiftLeftDoubleword; break;
+        case 539: result.opcode = PpcOpcode::kShiftRightDoubleword; break;
         case 28: result.opcode = PpcOpcode::kAnd; break;
         case 60: result.opcode = PpcOpcode::kAndComplement; break;
         case 412: result.opcode = PpcOpcode::kOrComplement; break;

@@ -626,3 +626,74 @@ TEST_CASE("PPC interpreter executes carrying immediate and subtraction forms",
   REQUIRE(context.xer.ca == 1);
   REQUIRE(context.cr0.eq == 1);
 }
+
+TEST_CASE("Runtime PPC decoder recognizes shifted immediates and doubleword shifts",
+          "[system][interpreter]") {
+  REQUIRE(rex::runtime::DecodePpcInstruction(DForm(25, 3, 4, 0x1234)).opcode ==
+          rex::runtime::PpcOpcode::kOrImmediateShifted);
+  REQUIRE(rex::runtime::DecodePpcInstruction(DForm(27, 3, 4, 0x1234)).immediate ==
+          static_cast<int32_t>(0x12340000));
+  const auto and_shifted = rex::runtime::DecodePpcInstruction(DForm(29, 3, 4, 0xFFFF));
+  REQUIRE(and_shifted.opcode == rex::runtime::PpcOpcode::kAndImmediateShifted);
+  REQUIRE(and_shifted.record);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 27)).opcode ==
+          rex::runtime::PpcOpcode::kShiftLeftDoubleword);
+  REQUIRE(rex::runtime::DecodePpcInstruction(XForm(3, 4, 5, 539)).opcode ==
+          rex::runtime::PpcOpcode::kShiftRightDoubleword);
+}
+
+TEST_CASE("PPC interpreter executes immediate logical variants",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(8);
+
+  StoreInstruction(memory.data(), 0, DForm(25, 3, 4, 0x1234));
+  StoreInstruction(memory.data(), 4, DForm(27, 4, 5, 0x00FF));
+  StoreInstruction(memory.data(), 8, DForm(28, 3, 6, 0x00FF));
+  StoreInstruction(memory.data(), 12, DForm(29, 3, 7, 0xFFFF));
+  StoreInstruction(memory.data(), 16, DForm(24, 3, 8, 0x000F));
+  StoreInstruction(memory.data(), 20, DForm(26, 8, 9, 0x00FF));
+  StoreInstruction(memory.data(), 24, 0x4E800020);
+  context.r3.u64 = 0xABCDEF01;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r4.u64 == 0xBBFDEF01);
+  REQUIRE(context.r5.u64 == 0xBB02EF01);
+  REQUIRE(context.r6.u64 == 1);
+  REQUIRE(context.r7.u64 == 0xABCD0000);
+  REQUIRE(context.r8.u64 == 0xABCDEF0F);
+  REQUIRE(context.r9.u64 == 0xABCDEFF0);
+  REQUIRE(context.cr0.lt == 0);
+  REQUIRE(context.cr0.gt == 1);
+}
+
+TEST_CASE("PPC interpreter executes doubleword logical shifts",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(6);
+
+  StoreInstruction(memory.data(), 0, XForm(3, 5, 4, 27));
+  StoreInstruction(memory.data(), 4, XForm(3, 6, 7, 539) | 1u);
+  StoreInstruction(memory.data(), 8, XForm(3, 8, 9, 27));
+  StoreInstruction(memory.data(), 12, XForm(3, 10, 9, 539) | 1u);
+  StoreInstruction(memory.data(), 16, 0x4E800020);
+  context.r3.u64 = 0x8000000000000001;
+  context.r4.u64 = 4;
+  context.r7.u64 = 4;
+  context.r9.u64 = 64;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r5.u64 == 0x10);
+  REQUIRE(context.r6.u64 == 0x0800000000000000);
+  REQUIRE(context.r8.u64 == 0);
+  REQUIRE(context.r10.u64 == 0);
+  REQUIRE(context.cr0.eq == 1);
+}
