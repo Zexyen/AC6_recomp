@@ -111,13 +111,13 @@ TEST_CASE("PPC interpreter reports unsupported instructions precisely", "[system
   std::array<uint8_t, 16> memory{};
   PPCContext context{};
   rex::runtime::InterpreterGuestExecutor executor;
-  StoreInstruction(memory.data(), 0, 0xFFFFFFFF);
+  StoreInstruction(memory.data(), 0, 0x04000000);
 
   const auto result = executor.Execute(context, memory.data(), 0);
 
   REQUIRE(result.status == rex::runtime::GuestExecutionStatus::kFault);
   REQUIRE(result.guest_address == 0);
-  REQUIRE(result.instruction == 0xFFFFFFFF);
+  REQUIRE(result.instruction == 0x04000000);
   REQUIRE(result.instructions_executed == 1);
 }
 
@@ -842,4 +842,85 @@ TEST_CASE("PPC interpreter loads computes compares and stores floating-point val
   uint64_t stored_bits;
   std::memcpy(&stored_bits, memory.data() + 0x90, sizeof(stored_bits));
   REQUIRE(std::byteswap(stored_bits) == std::bit_cast<uint64_t>(3.5));
+}
+
+TEST_CASE("PPC interpreter executes floating-point indexed update memory operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 256> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(6, memory.size());
+
+  StoreInstruction(memory.data(), 0, XForm(1, 3, 4, 631));
+  StoreInstruction(memory.data(), 4, XForm(1, 5, 6, 695));
+  StoreInstruction(memory.data(), 8, XForm(2, 7, 8, 567));
+  StoreInstruction(memory.data(), 12, XForm(2, 9, 10, 759));
+  StoreInstruction(memory.data(), 16, 0x4E800020);
+  context.r3.u64 = 0x80; context.r4.u64 = 8;
+  context.r5.u64 = 0x90; context.r6.u64 = 4;
+  context.r7.u64 = 0x90; context.r8.u64 = 4;
+  context.r9.u64 = 0x98; context.r10.u64 = 8;
+  uint64_t source = std::byteswap(std::bit_cast<uint64_t>(6.25));
+  std::memcpy(memory.data() + 0x88, &source, sizeof(source));
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.f1.f64 == 6.25);
+  REQUIRE(context.f2.f64 == static_cast<double>(static_cast<float>(6.25)));
+  REQUIRE(context.r3.u64 == 0x88);
+  REQUIRE(context.r5.u64 == 0x94);
+  REQUIRE(context.r7.u64 == 0x94);
+  REQUIRE(context.r9.u64 == 0xA0);
+}
+
+TEST_CASE("PPC interpreter executes baseline floating-point conversions",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(6);
+
+  StoreInstruction(memory.data(), 0, FloatXForm(63, 2, 0, 1, 814));
+  StoreInstruction(memory.data(), 4, FloatXForm(63, 3, 0, 2, 12));
+  StoreInstruction(memory.data(), 8, FloatXForm(63, 4, 0, 3, 15));
+  StoreInstruction(memory.data(), 12, FloatXForm(63, 5, 0, 3, 815));
+  StoreInstruction(memory.data(), 16, 0x4E800020);
+  context.f1.s64 = 16'777'217;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.f2.f64 == 16'777'217.0);
+  REQUIRE(context.f3.f64 == 16'777'216.0);
+  REQUIRE(context.f4.s64 == 16'777'216);
+  REQUIRE(context.f5.s64 == 16'777'216);
+}
+
+TEST_CASE("PPC interpreter executes fused floating-point arithmetic and selection",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, FloatAForm(63, 4, 1, 3, 2, 29));
+  StoreInstruction(memory.data(), 4, FloatAForm(63, 5, 1, 3, 2, 28));
+  StoreInstruction(memory.data(), 8, FloatAForm(63, 6, 1, 3, 2, 31));
+  StoreInstruction(memory.data(), 12, FloatAForm(59, 7, 1, 3, 2, 30));
+  StoreInstruction(memory.data(), 16, FloatAForm(63, 8, 9, 5, 4, 23));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.f1.f64 = 2.0;
+  context.f2.f64 = 4.0;
+  context.f3.f64 = 3.0;
+  context.f9.f64 = -1.0;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.f4.f64 == 11.0);
+  REQUIRE(context.f5.f64 == 5.0);
+  REQUIRE(context.f6.f64 == -11.0);
+  REQUIRE(context.f7.f64 == -5.0);
+  REQUIRE(context.f8.f64 == 5.0);
 }

@@ -1,4 +1,5 @@
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -402,27 +403,67 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         break;
       }
       case PpcOpcode::kLoadFloatSingle:
-      case PpcOpcode::kLoadFloatDouble: {
-        const uint32_t address = EffectiveAddress(context, instruction, false);
-        const uint32_t size = instruction.opcode == PpcOpcode::kLoadFloatSingle ? 4 : 8;
+      case PpcOpcode::kLoadFloatSingleUpdate:
+      case PpcOpcode::kLoadFloatSingleIndexed:
+      case PpcOpcode::kLoadFloatSingleIndexedUpdate:
+      case PpcOpcode::kLoadFloatDouble:
+      case PpcOpcode::kLoadFloatDoubleUpdate:
+      case PpcOpcode::kLoadFloatDoubleIndexed:
+      case PpcOpcode::kLoadFloatDoubleIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kLoadFloatSingleIndexed ||
+                             instruction.opcode == PpcOpcode::kLoadFloatSingleIndexedUpdate ||
+                             instruction.opcode == PpcOpcode::kLoadFloatDoubleIndexed ||
+                             instruction.opcode == PpcOpcode::kLoadFloatDoubleIndexedUpdate;
+        const bool single = instruction.opcode == PpcOpcode::kLoadFloatSingle ||
+                            instruction.opcode == PpcOpcode::kLoadFloatSingleUpdate ||
+                            instruction.opcode == PpcOpcode::kLoadFloatSingleIndexed ||
+                            instruction.opcode == PpcOpcode::kLoadFloatSingleIndexedUpdate;
+        const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        const uint32_t size = single ? 4 : 8;
         if (!IsRangeValid(address, size, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         if (size == 4) {
           Fpr(context, instruction.rt).f64 = static_cast<double>(std::bit_cast<float>(LoadBe32(memory_base + address)));
         } else {
           Fpr(context, instruction.rt).u64 = LoadBe64(memory_base + address);
         }
+        if (instruction.opcode == PpcOpcode::kLoadFloatSingleUpdate ||
+            instruction.opcode == PpcOpcode::kLoadFloatSingleIndexedUpdate ||
+            instruction.opcode == PpcOpcode::kLoadFloatDoubleUpdate ||
+            instruction.opcode == PpcOpcode::kLoadFloatDoubleIndexedUpdate) {
+          Gpr(context, instruction.ra).u64 = address;
+        }
         pc = next_pc;
         break;
       }
       case PpcOpcode::kStoreFloatSingle:
-      case PpcOpcode::kStoreFloatDouble: {
-        const uint32_t address = EffectiveAddress(context, instruction, false);
-        const uint32_t size = instruction.opcode == PpcOpcode::kStoreFloatSingle ? 4 : 8;
+      case PpcOpcode::kStoreFloatSingleUpdate:
+      case PpcOpcode::kStoreFloatSingleIndexed:
+      case PpcOpcode::kStoreFloatSingleIndexedUpdate:
+      case PpcOpcode::kStoreFloatDouble:
+      case PpcOpcode::kStoreFloatDoubleUpdate:
+      case PpcOpcode::kStoreFloatDoubleIndexed:
+      case PpcOpcode::kStoreFloatDoubleIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kStoreFloatSingleIndexed ||
+                             instruction.opcode == PpcOpcode::kStoreFloatSingleIndexedUpdate ||
+                             instruction.opcode == PpcOpcode::kStoreFloatDoubleIndexed ||
+                             instruction.opcode == PpcOpcode::kStoreFloatDoubleIndexedUpdate;
+        const bool single = instruction.opcode == PpcOpcode::kStoreFloatSingle ||
+                            instruction.opcode == PpcOpcode::kStoreFloatSingleUpdate ||
+                            instruction.opcode == PpcOpcode::kStoreFloatSingleIndexed ||
+                            instruction.opcode == PpcOpcode::kStoreFloatSingleIndexedUpdate;
+        const uint32_t address = EffectiveAddress(context, instruction, indexed);
+        const uint32_t size = single ? 4 : 8;
         if (!IsRangeValid(address, size, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
         if (size == 4) {
           StoreBe32(memory_base + address, std::bit_cast<uint32_t>(static_cast<float>(Fpr(context, instruction.rt).f64)));
         } else {
           StoreBe64(memory_base + address, Fpr(context, instruction.rt).u64);
+        }
+        if (instruction.opcode == PpcOpcode::kStoreFloatSingleUpdate ||
+            instruction.opcode == PpcOpcode::kStoreFloatSingleIndexedUpdate ||
+            instruction.opcode == PpcOpcode::kStoreFloatDoubleUpdate ||
+            instruction.opcode == PpcOpcode::kStoreFloatDoubleIndexedUpdate) {
+          Gpr(context, instruction.ra).u64 = address;
         }
         pc = next_pc;
         break;
@@ -821,9 +862,71 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kFloatMultiplyAdd:
+      case PpcOpcode::kFloatMultiplySubtract:
+      case PpcOpcode::kFloatNegativeMultiplyAdd:
+      case PpcOpcode::kFloatNegativeMultiplySubtract: {
+        const double product_and_addend = std::fma(
+            Fpr(context, instruction.ra).f64,
+            Fpr(context, instruction.rc).f64,
+            (instruction.opcode == PpcOpcode::kFloatMultiplySubtract ||
+             instruction.opcode == PpcOpcode::kFloatNegativeMultiplySubtract)
+                ? -Fpr(context, instruction.rb).f64
+                : Fpr(context, instruction.rb).f64);
+        const double value =
+            (instruction.opcode == PpcOpcode::kFloatNegativeMultiplyAdd ||
+             instruction.opcode == PpcOpcode::kFloatNegativeMultiplySubtract)
+                ? -product_and_addend
+                : product_and_addend;
+        Fpr(context, instruction.rt).f64 =
+            instruction.is_64_bit
+                ? value
+                : static_cast<double>(static_cast<float>(value));
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kFloatSelect:
+        Fpr(context, instruction.rt).f64 =
+            Fpr(context, instruction.ra).f64 >= 0.0
+                ? Fpr(context, instruction.rc).f64
+                : Fpr(context, instruction.rb).f64;
+        pc = next_pc;
+        break;
       case PpcOpcode::kFloatCompare:
         CrField(context, instruction.cr_field).compare(
             Fpr(context, instruction.ra).f64, Fpr(context, instruction.rb).f64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatRoundToSingle:
+        Fpr(context, instruction.rt).f64 = static_cast<double>(static_cast<float>(Fpr(context, instruction.rb).f64));
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatConvertFromIntegerDoubleword:
+        Fpr(context, instruction.rt).f64 = static_cast<double>(Fpr(context, instruction.rb).s64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatConvertToIntegerWordZero:
+        if (std::isnan(Fpr(context, instruction.rb).f64)) {
+          Fpr(context, instruction.rt).s64 = INT32_MIN;
+        } else if (Fpr(context, instruction.rb).f64 >= static_cast<double>(INT32_MAX)) {
+          Fpr(context, instruction.rt).s64 = INT32_MAX;
+        } else if (Fpr(context, instruction.rb).f64 <= static_cast<double>(INT32_MIN)) {
+          Fpr(context, instruction.rt).s64 = INT32_MIN;
+        } else {
+          Fpr(context, instruction.rt).s64 = static_cast<int32_t>(Fpr(context, instruction.rb).f64);
+        }
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatConvertToIntegerDoublewordZero:
+        if (std::isnan(Fpr(context, instruction.rb).f64)) {
+          Fpr(context, instruction.rt).s64 = INT64_MIN;
+        } else if (Fpr(context, instruction.rb).f64 >= static_cast<double>(INT64_MAX)) {
+          Fpr(context, instruction.rt).s64 = INT64_MAX;
+        } else if (Fpr(context, instruction.rb).f64 <= static_cast<double>(INT64_MIN)) {
+          Fpr(context, instruction.rt).s64 = INT64_MIN;
+        } else {
+          Fpr(context, instruction.rt).s64 = static_cast<int64_t>(Fpr(context, instruction.rb).f64);
+        }
         pc = next_pc;
         break;
       case PpcOpcode::kMoveFromSpr: {

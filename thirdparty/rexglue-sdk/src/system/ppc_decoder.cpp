@@ -142,28 +142,49 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.opcode = PpcOpcode::kLoadFloatSingle;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
+    case 49:
+      result.opcode = PpcOpcode::kLoadFloatSingleUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
     case 50:
       result.opcode = PpcOpcode::kLoadFloatDouble;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 51:
+      result.opcode = PpcOpcode::kLoadFloatDoubleUpdate;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
     case 52:
       result.opcode = PpcOpcode::kStoreFloatSingle;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
+    case 53:
+      result.opcode = PpcOpcode::kStoreFloatSingleUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
     case 54:
       result.opcode = PpcOpcode::kStoreFloatDouble;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
+    case 55:
+      result.opcode = PpcOpcode::kStoreFloatDoubleUpdate;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
     case 59: {
       const uint32_t xo = (raw >> 1) & 31;
+      result.rc = static_cast<uint8_t>((raw >> 6) & 31);
       switch (xo) {
         case 18: result.opcode = PpcOpcode::kFloatDivide; break;
         case 20: result.opcode = PpcOpcode::kFloatSubtract; break;
         case 21: result.opcode = PpcOpcode::kFloatAdd; break;
         case 25:
           result.opcode = PpcOpcode::kFloatMultiply;
-          result.rb = static_cast<uint8_t>((raw >> 6) & 31);
+          result.rb = result.rc;
           break;
+        case 28: result.opcode = PpcOpcode::kFloatMultiplySubtract; break;
+        case 29: result.opcode = PpcOpcode::kFloatMultiplyAdd; break;
+        case 30: result.opcode = PpcOpcode::kFloatNegativeMultiplySubtract; break;
+        case 31: result.opcode = PpcOpcode::kFloatNegativeMultiplyAdd; break;
         default: break;
       }
       result.is_64_bit = false;
@@ -171,6 +192,7 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
     }
     case 63: {
       const uint32_t xo = (raw >> 1) & 0x3FF;
+      result.rc = static_cast<uint8_t>((raw >> 6) & 31);
       switch (xo) {
         case 0:
         case 32:
@@ -181,6 +203,10 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 72: result.opcode = PpcOpcode::kFloatMove; break;
         case 136: result.opcode = PpcOpcode::kFloatNegativeAbsolute; break;
         case 264: result.opcode = PpcOpcode::kFloatAbsolute; break;
+        case 12: result.opcode = PpcOpcode::kFloatRoundToSingle; break;
+        case 814: result.opcode = PpcOpcode::kFloatConvertFromIntegerDoubleword; break;
+        case 15: result.opcode = PpcOpcode::kFloatConvertToIntegerWordZero; break;
+        case 815: result.opcode = PpcOpcode::kFloatConvertToIntegerDoublewordZero; break;
         default: break;
       }
       if (result.opcode == PpcOpcode::kUnknown) {
@@ -190,8 +216,13 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
           case 21: result.opcode = PpcOpcode::kFloatAdd; break;
           case 25:
             result.opcode = PpcOpcode::kFloatMultiply;
-            result.rb = static_cast<uint8_t>((raw >> 6) & 31);
+            result.rb = result.rc;
             break;
+          case 23: result.opcode = PpcOpcode::kFloatSelect; break;
+          case 28: result.opcode = PpcOpcode::kFloatMultiplySubtract; break;
+          case 29: result.opcode = PpcOpcode::kFloatMultiplyAdd; break;
+          case 30: result.opcode = PpcOpcode::kFloatNegativeMultiplySubtract; break;
+          case 31: result.opcode = PpcOpcode::kFloatNegativeMultiplyAdd; break;
           default: break;
         }
       }
@@ -292,6 +323,14 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
         case 439: result.opcode = PpcOpcode::kStoreHalfIndexedUpdate; break;
         case 149: result.opcode = PpcOpcode::kStoreDoublewordIndexed; break;
         case 181: result.opcode = PpcOpcode::kStoreDoublewordIndexedUpdate; break;
+        case 535: result.opcode = PpcOpcode::kLoadFloatSingleIndexed; break;
+        case 567: result.opcode = PpcOpcode::kLoadFloatSingleIndexedUpdate; break;
+        case 599: result.opcode = PpcOpcode::kLoadFloatDoubleIndexed; break;
+        case 631: result.opcode = PpcOpcode::kLoadFloatDoubleIndexedUpdate; break;
+        case 663: result.opcode = PpcOpcode::kStoreFloatSingleIndexed; break;
+        case 695: result.opcode = PpcOpcode::kStoreFloatSingleIndexedUpdate; break;
+        case 727: result.opcode = PpcOpcode::kStoreFloatDoubleIndexed; break;
+        case 759: result.opcode = PpcOpcode::kStoreFloatDoubleIndexedUpdate; break;
         case 24: result.opcode = PpcOpcode::kShiftLeftWord; break;
         case 536: result.opcode = PpcOpcode::kShiftRightWord; break;
         case 27: result.opcode = PpcOpcode::kShiftLeftDoubleword; break;

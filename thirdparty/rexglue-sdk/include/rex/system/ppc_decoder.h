@@ -60,9 +60,21 @@ enum class PpcOpcode : uint8_t {
   kStoreDoublewordIndexed,
   kStoreDoublewordIndexedUpdate,
   kLoadFloatSingle,
+  kLoadFloatSingleUpdate,
+  kLoadFloatSingleIndexed,
+  kLoadFloatSingleIndexedUpdate,
   kLoadFloatDouble,
+  kLoadFloatDoubleUpdate,
+  kLoadFloatDoubleIndexed,
+  kLoadFloatDoubleIndexedUpdate,
   kStoreFloatSingle,
+  kStoreFloatSingleUpdate,
+  kStoreFloatSingleIndexed,
+  kStoreFloatSingleIndexedUpdate,
   kStoreFloatDouble,
+  kStoreFloatDoubleUpdate,
+  kStoreFloatDoubleIndexed,
+  kStoreFloatDoubleIndexedUpdate,
   kBranch,
   kBranchConditional,
   kBranchConditionalToLinkRegister,
@@ -132,7 +144,16 @@ enum class PpcOpcode : uint8_t {
   kFloatSubtract,
   kFloatMultiply,
   kFloatDivide,
+  kFloatMultiplyAdd,
+  kFloatMultiplySubtract,
+  kFloatNegativeMultiplyAdd,
+  kFloatNegativeMultiplySubtract,
+  kFloatSelect,
   kFloatCompare,
+  kFloatRoundToSingle,
+  kFloatConvertFromIntegerDoubleword,
+  kFloatConvertToIntegerWordZero,
+  kFloatConvertToIntegerDoublewordZero,
 };
 
 struct DecodedPpcInstruction {
@@ -143,6 +164,7 @@ struct DecodedPpcInstruction {
   uint8_t bo = 0;
   uint8_t bi = 0;
   uint8_t rb = 0;
+  uint8_t rc = 0;
   uint8_t cr_field = 0;
   uint8_t shift = 0;
   uint8_t mask_begin = 0;
