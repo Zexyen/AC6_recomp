@@ -239,17 +239,33 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         break;
       }
       case PpcOpcode::kLoadWordIndexed:
-        Gpr(context, instruction.rt).u64 =
-            LoadBe32(memory_base + EffectiveAddress(context, instruction, true));
+      case PpcOpcode::kLoadWordIndexedUpdate:
+      case PpcOpcode::kLoadWordSignedIndexed:
+      case PpcOpcode::kLoadWordSignedIndexedUpdate: {
+        const uint32_t address = EffectiveAddress(context, instruction, true);
+        const uint32_t value = LoadBe32(memory_base + address);
+        const bool signed_load = instruction.opcode == PpcOpcode::kLoadWordSignedIndexed ||
+                                 instruction.opcode == PpcOpcode::kLoadWordSignedIndexedUpdate;
+        Gpr(context, instruction.rt).u64 = signed_load
+            ? static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(value)))
+            : value;
+        if (instruction.opcode == PpcOpcode::kLoadWordIndexedUpdate ||
+            instruction.opcode == PpcOpcode::kLoadWordSignedIndexedUpdate) {
+          Gpr(context, instruction.ra).u64 = address;
+        }
         pc = next_pc;
         break;
+      }
       case PpcOpcode::kLoadByte:
       case PpcOpcode::kLoadByteUpdate:
-      case PpcOpcode::kLoadByteIndexed: {
-        const bool indexed = instruction.opcode == PpcOpcode::kLoadByteIndexed;
+      case PpcOpcode::kLoadByteIndexed:
+      case PpcOpcode::kLoadByteIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kLoadByteIndexed ||
+                             instruction.opcode == PpcOpcode::kLoadByteIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         Gpr(context, instruction.rt).u64 = memory_base[address];
-        if (instruction.opcode == PpcOpcode::kLoadByteUpdate) Gpr(context, instruction.ra).u64 = address;
+        if (instruction.opcode == PpcOpcode::kLoadByteUpdate ||
+            instruction.opcode == PpcOpcode::kLoadByteIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
         break;
       }
@@ -257,27 +273,37 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
       case PpcOpcode::kLoadHalfUpdate:
       case PpcOpcode::kLoadHalfIndexed:
       case PpcOpcode::kLoadHalfSigned:
-      case PpcOpcode::kLoadHalfSignedIndexed: {
+      case PpcOpcode::kLoadHalfSignedIndexed:
+      case PpcOpcode::kLoadHalfIndexedUpdate:
+      case PpcOpcode::kLoadHalfSignedIndexedUpdate: {
         const bool indexed = instruction.opcode == PpcOpcode::kLoadHalfIndexed ||
-                             instruction.opcode == PpcOpcode::kLoadHalfSignedIndexed;
+                             instruction.opcode == PpcOpcode::kLoadHalfSignedIndexed ||
+                             instruction.opcode == PpcOpcode::kLoadHalfIndexedUpdate ||
+                             instruction.opcode == PpcOpcode::kLoadHalfSignedIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         const uint16_t value = LoadBe16(memory_base + address);
         const bool signed_load = instruction.opcode == PpcOpcode::kLoadHalfSigned ||
-                                 instruction.opcode == PpcOpcode::kLoadHalfSignedIndexed;
+                                 instruction.opcode == PpcOpcode::kLoadHalfSignedIndexed ||
+                                 instruction.opcode == PpcOpcode::kLoadHalfSignedIndexedUpdate;
         Gpr(context, instruction.rt).u64 = signed_load
             ? static_cast<uint64_t>(static_cast<int64_t>(static_cast<int16_t>(value)))
             : value;
-        if (instruction.opcode == PpcOpcode::kLoadHalfUpdate) Gpr(context, instruction.ra).u64 = address;
+        if (instruction.opcode == PpcOpcode::kLoadHalfUpdate ||
+            instruction.opcode == PpcOpcode::kLoadHalfIndexedUpdate ||
+            instruction.opcode == PpcOpcode::kLoadHalfSignedIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
         break;
       }
       case PpcOpcode::kLoadDoubleword:
       case PpcOpcode::kLoadDoublewordUpdate:
-      case PpcOpcode::kLoadDoublewordIndexed: {
-        const bool indexed = instruction.opcode == PpcOpcode::kLoadDoublewordIndexed;
+      case PpcOpcode::kLoadDoublewordIndexed:
+      case PpcOpcode::kLoadDoublewordIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kLoadDoublewordIndexed ||
+                             instruction.opcode == PpcOpcode::kLoadDoublewordIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         Gpr(context, instruction.rt).u64 = LoadBe64(memory_base + address);
-        if (instruction.opcode == PpcOpcode::kLoadDoublewordUpdate) {
+        if (instruction.opcode == PpcOpcode::kLoadDoublewordUpdate ||
+            instruction.opcode == PpcOpcode::kLoadDoublewordIndexedUpdate) {
           Gpr(context, instruction.ra).u64 = address;
         }
         pc = next_pc;
@@ -290,41 +316,52 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         break;
       }
       case PpcOpcode::kStoreWordUpdate:
-      case PpcOpcode::kStoreWordIndexed: {
-        const bool indexed = instruction.opcode == PpcOpcode::kStoreWordIndexed;
+      case PpcOpcode::kStoreWordIndexed:
+      case PpcOpcode::kStoreWordIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kStoreWordIndexed ||
+                             instruction.opcode == PpcOpcode::kStoreWordIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         StoreBe32(memory_base + address, Gpr(context, instruction.rt).u32);
-        if (!indexed) Gpr(context, instruction.ra).u64 = address;
+        if (!indexed || instruction.opcode == PpcOpcode::kStoreWordIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
         break;
       }
       case PpcOpcode::kStoreByte:
       case PpcOpcode::kStoreByteUpdate:
-      case PpcOpcode::kStoreByteIndexed: {
-        const bool indexed = instruction.opcode == PpcOpcode::kStoreByteIndexed;
+      case PpcOpcode::kStoreByteIndexed:
+      case PpcOpcode::kStoreByteIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kStoreByteIndexed ||
+                             instruction.opcode == PpcOpcode::kStoreByteIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         memory_base[address] = Gpr(context, instruction.rt).u8;
-        if (instruction.opcode == PpcOpcode::kStoreByteUpdate) Gpr(context, instruction.ra).u64 = address;
+        if (instruction.opcode == PpcOpcode::kStoreByteUpdate ||
+            instruction.opcode == PpcOpcode::kStoreByteIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
         break;
       }
       case PpcOpcode::kStoreHalf:
       case PpcOpcode::kStoreHalfUpdate:
-      case PpcOpcode::kStoreHalfIndexed: {
-        const bool indexed = instruction.opcode == PpcOpcode::kStoreHalfIndexed;
+      case PpcOpcode::kStoreHalfIndexed:
+      case PpcOpcode::kStoreHalfIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kStoreHalfIndexed ||
+                             instruction.opcode == PpcOpcode::kStoreHalfIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         StoreBe16(memory_base + address, Gpr(context, instruction.rt).u16);
-        if (instruction.opcode == PpcOpcode::kStoreHalfUpdate) Gpr(context, instruction.ra).u64 = address;
+        if (instruction.opcode == PpcOpcode::kStoreHalfUpdate ||
+            instruction.opcode == PpcOpcode::kStoreHalfIndexedUpdate) Gpr(context, instruction.ra).u64 = address;
         pc = next_pc;
         break;
       }
       case PpcOpcode::kStoreDoubleword:
       case PpcOpcode::kStoreDoublewordUpdate:
-      case PpcOpcode::kStoreDoublewordIndexed: {
-        const bool indexed = instruction.opcode == PpcOpcode::kStoreDoublewordIndexed;
+      case PpcOpcode::kStoreDoublewordIndexed:
+      case PpcOpcode::kStoreDoublewordIndexedUpdate: {
+        const bool indexed = instruction.opcode == PpcOpcode::kStoreDoublewordIndexed ||
+                             instruction.opcode == PpcOpcode::kStoreDoublewordIndexedUpdate;
         const uint32_t address = EffectiveAddress(context, instruction, indexed);
         StoreBe64(memory_base + address, Gpr(context, instruction.rt).u64);
-        if (instruction.opcode == PpcOpcode::kStoreDoublewordUpdate) {
+        if (instruction.opcode == PpcOpcode::kStoreDoublewordUpdate ||
+            instruction.opcode == PpcOpcode::kStoreDoublewordIndexedUpdate) {
           Gpr(context, instruction.ra).u64 = address;
         }
         pc = next_pc;
@@ -574,6 +611,34 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
         pc = next_pc;
         break;
+      case PpcOpcode::kMultiplyHighWord:
+        Gpr(context, instruction.rt).s64 =
+            (static_cast<int64_t>(Gpr(context, instruction.ra).s32) *
+             static_cast<int64_t>(Gpr(context, instruction.rb).s32)) >> 32;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kMultiplyHighWordUnsigned:
+        Gpr(context, instruction.rt).u64 =
+            (static_cast<uint64_t>(Gpr(context, instruction.ra).u32) *
+             static_cast<uint64_t>(Gpr(context, instruction.rb).u32)) >> 32;
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kMultiplyHighDoubleword:
+        Gpr(context, instruction.rt).s64 = static_cast<int64_t>(
+            (static_cast<__int128>(Gpr(context, instruction.ra).s64) *
+             static_cast<__int128>(Gpr(context, instruction.rb).s64)) >> 64);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kMultiplyHighDoublewordUnsigned:
+        Gpr(context, instruction.rt).u64 = static_cast<uint64_t>(
+            (static_cast<__uint128_t>(Gpr(context, instruction.ra).u64) *
+             static_cast<__uint128_t>(Gpr(context, instruction.rb).u64)) >> 64);
+        if (instruction.record) UpdateCr0(context, Gpr(context, instruction.rt).u64);
+        pc = next_pc;
+        break;
       case PpcOpcode::kDivideWord:
       case PpcOpcode::kDivideWordUnsigned:
       case PpcOpcode::kDivideDoubleword:
@@ -607,6 +672,16 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
                                    : instruction.shift;
         const uint32_t value = std::rotl(Gpr(context, instruction.rt).u32, shift) &
                                WordMask(instruction.mask_begin, instruction.mask_end);
+        Gpr(context, instruction.ra).u64 = value;
+        if (instruction.record) UpdateCr0Word(context, value);
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kRotateLeftWordImmediateMaskInsert: {
+        const uint32_t mask = WordMask(instruction.mask_begin, instruction.mask_end);
+        const uint32_t value =
+            (std::rotl(Gpr(context, instruction.rt).u32, instruction.shift) & mask) |
+            (Gpr(context, instruction.ra).u32 & ~mask);
         Gpr(context, instruction.ra).u64 = value;
         if (instruction.record) UpdateCr0Word(context, value);
         pc = next_pc;

@@ -697,3 +697,68 @@ TEST_CASE("PPC interpreter executes doubleword logical shifts",
   REQUIRE(context.r10.u64 == 0);
   REQUIRE(context.cr0.eq == 1);
 }
+
+TEST_CASE("PPC interpreter executes multiply-high and rotate-mask insert operations",
+          "[system][interpreter]") {
+  std::array<uint8_t, 64> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(7);
+
+  StoreInstruction(memory.data(), 0, XForm(5, 3, 4, 75));
+  StoreInstruction(memory.data(), 4, XForm(6, 3, 4, 11));
+  StoreInstruction(memory.data(), 8, XForm(7, 8, 9, 73));
+  StoreInstruction(memory.data(), 12, XForm(10, 8, 9, 9));
+  StoreInstruction(memory.data(), 16, MForm(20, 11, 12, 8, 8, 15, true));
+  StoreInstruction(memory.data(), 20, 0x4E800020);
+  context.r3.u64 = 0xFFFFFFFF;
+  context.r4.u64 = 2;
+  context.r8.u64 = UINT64_MAX;
+  context.r9.u64 = 2;
+  context.r11.u64 = 0x12345678;
+  context.r12.u64 = 0xAABBCCDD;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r5.s64 == -1);
+  REQUIRE(context.r6.u64 == 1);
+  REQUIRE(context.r7.s64 == -1);
+  REQUIRE(context.r10.u64 == 1);
+  REQUIRE(context.r12.u64 == 0xAA56CCDD);
+  REQUIRE(context.cr0.lt == 1);
+}
+
+TEST_CASE("PPC interpreter executes indexed update memory variants",
+          "[system][interpreter]") {
+  std::array<uint8_t, 512> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(8);
+
+  StoreInstruction(memory.data(), 0, XForm(3, 1, 2, 183));
+  StoreInstruction(memory.data(), 4, XForm(4, 5, 6, 55));
+  StoreInstruction(memory.data(), 8, XForm(7, 8, 9, 247));
+  StoreInstruction(memory.data(), 12, XForm(10, 11, 12, 119));
+  StoreInstruction(memory.data(), 16, XForm(13, 14, 15, 181));
+  StoreInstruction(memory.data(), 20, XForm(16, 17, 18, 53));
+  StoreInstruction(memory.data(), 24, 0x4E800020);
+  context.r1.u64 = 0x100; context.r2.u64 = 4; context.r3.u64 = 0x89ABCDEF;
+  context.r5.u64 = 0x100; context.r6.u64 = 4;
+  context.r8.u64 = 0x110; context.r9.u64 = 1; context.r7.u64 = 0x7A;
+  context.r11.u64 = 0x110; context.r12.u64 = 1;
+  context.r14.u64 = 0x120; context.r15.u64 = 8; context.r13.u64 = 0x0123456789ABCDEF;
+  context.r17.u64 = 0x120; context.r18.u64 = 8;
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.r1.u64 == 0x104);
+  REQUIRE(context.r4.u64 == 0x89ABCDEF);
+  REQUIRE(context.r5.u64 == 0x104);
+  REQUIRE(context.r10.u64 == 0x7A);
+  REQUIRE(context.r11.u64 == 0x111);
+  REQUIRE(context.r14.u64 == 0x128);
+  REQUIRE(context.r16.u64 == 0x0123456789ABCDEF);
+  REQUIRE(context.r17.u64 == 0x128);
+}
