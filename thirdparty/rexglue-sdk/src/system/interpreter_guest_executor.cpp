@@ -24,6 +24,22 @@ PPCRegister& Gpr(PPCContext& context, uint8_t index) {
   }
 }
 
+PPCRegister& Fpr(PPCContext& context, uint8_t index) {
+  switch (index) {
+#define REX_FPR_CASE(n) case n: return context.f##n
+    REX_FPR_CASE(0); REX_FPR_CASE(1); REX_FPR_CASE(2); REX_FPR_CASE(3);
+    REX_FPR_CASE(4); REX_FPR_CASE(5); REX_FPR_CASE(6); REX_FPR_CASE(7);
+    REX_FPR_CASE(8); REX_FPR_CASE(9); REX_FPR_CASE(10); REX_FPR_CASE(11);
+    REX_FPR_CASE(12); REX_FPR_CASE(13); REX_FPR_CASE(14); REX_FPR_CASE(15);
+    REX_FPR_CASE(16); REX_FPR_CASE(17); REX_FPR_CASE(18); REX_FPR_CASE(19);
+    REX_FPR_CASE(20); REX_FPR_CASE(21); REX_FPR_CASE(22); REX_FPR_CASE(23);
+    REX_FPR_CASE(24); REX_FPR_CASE(25); REX_FPR_CASE(26); REX_FPR_CASE(27);
+    REX_FPR_CASE(28); REX_FPR_CASE(29); REX_FPR_CASE(30); REX_FPR_CASE(31);
+#undef REX_FPR_CASE
+    default: return context.f0;
+  }
+}
+
 uint32_t LoadBe32(const uint8_t* address) {
   uint32_t value;
   std::memcpy(&value, address, sizeof(value));
@@ -381,6 +397,32 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         if (instruction.opcode == PpcOpcode::kStoreDoublewordUpdate ||
             instruction.opcode == PpcOpcode::kStoreDoublewordIndexedUpdate) {
           Gpr(context, instruction.ra).u64 = address;
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kLoadFloatSingle:
+      case PpcOpcode::kLoadFloatDouble: {
+        const uint32_t address = EffectiveAddress(context, instruction, false);
+        const uint32_t size = instruction.opcode == PpcOpcode::kLoadFloatSingle ? 4 : 8;
+        if (!IsRangeValid(address, size, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
+        if (size == 4) {
+          Fpr(context, instruction.rt).f64 = static_cast<double>(std::bit_cast<float>(LoadBe32(memory_base + address)));
+        } else {
+          Fpr(context, instruction.rt).u64 = LoadBe64(memory_base + address);
+        }
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kStoreFloatSingle:
+      case PpcOpcode::kStoreFloatDouble: {
+        const uint32_t address = EffectiveAddress(context, instruction, false);
+        const uint32_t size = instruction.opcode == PpcOpcode::kStoreFloatSingle ? 4 : 8;
+        if (!IsRangeValid(address, size, address_space_size_)) return {GuestExecutionStatus::kFault, pc, raw, count};
+        if (size == 4) {
+          StoreBe32(memory_base + address, std::bit_cast<uint32_t>(static_cast<float>(Fpr(context, instruction.rt).f64)));
+        } else {
+          StoreBe64(memory_base + address, Fpr(context, instruction.rt).u64);
         }
         pc = next_pc;
         break;
@@ -748,6 +790,42 @@ GuestExecutionResult InterpreterGuestExecutor::Execute(PPCContext& context, uint
         pc = next_pc;
         break;
       }
+      case PpcOpcode::kFloatMove:
+        Fpr(context, instruction.rt).u64 = Fpr(context, instruction.rb).u64;
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatAbsolute:
+        Fpr(context, instruction.rt).u64 = Fpr(context, instruction.rb).u64 & ~(uint64_t{1} << 63);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatNegativeAbsolute:
+        Fpr(context, instruction.rt).u64 = Fpr(context, instruction.rb).u64 | (uint64_t{1} << 63);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatNegate:
+        Fpr(context, instruction.rt).u64 = Fpr(context, instruction.rb).u64 ^ (uint64_t{1} << 63);
+        pc = next_pc;
+        break;
+      case PpcOpcode::kFloatAdd:
+      case PpcOpcode::kFloatSubtract:
+      case PpcOpcode::kFloatMultiply:
+      case PpcOpcode::kFloatDivide: {
+        const double left = Fpr(context, instruction.ra).f64;
+        const double right = Fpr(context, instruction.rb).f64;
+        double value = 0;
+        if (instruction.opcode == PpcOpcode::kFloatAdd) value = left + right;
+        else if (instruction.opcode == PpcOpcode::kFloatSubtract) value = left - right;
+        else if (instruction.opcode == PpcOpcode::kFloatMultiply) value = left * right;
+        else value = left / right;
+        Fpr(context, instruction.rt).f64 = instruction.is_64_bit ? value : static_cast<double>(static_cast<float>(value));
+        pc = next_pc;
+        break;
+      }
+      case PpcOpcode::kFloatCompare:
+        CrField(context, instruction.cr_field).compare(
+            Fpr(context, instruction.ra).f64, Fpr(context, instruction.rb).f64);
+        pc = next_pc;
+        break;
       case PpcOpcode::kMoveFromSpr: {
         uint64_t value = 0;
         if (!ReadSpr(context, instruction.spr, value)) {

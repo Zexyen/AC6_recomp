@@ -42,6 +42,17 @@ constexpr uint32_t CrForm(uint32_t target, uint32_t source_a,
          (source_b << 11) | (xo << 1);
 }
 
+constexpr uint32_t FloatXForm(uint32_t primary, uint32_t ft, uint32_t fa,
+                              uint32_t fb, uint32_t xo) {
+  return (primary << 26) | (ft << 21) | (fa << 16) | (fb << 11) | (xo << 1);
+}
+
+constexpr uint32_t FloatAForm(uint32_t primary, uint32_t ft, uint32_t fa,
+                              uint32_t fb, uint32_t fc, uint32_t xo) {
+  return (primary << 26) | (ft << 21) | (fa << 16) | (fb << 11) |
+         (fc << 6) | (xo << 1);
+}
+
 constexpr uint32_t BForm(uint32_t bo, uint32_t bi, int16_t displacement) {
   return (16u << 26) | (bo << 21) | (bi << 16) |
          (static_cast<uint16_t>(displacement) & 0xFFFC);
@@ -784,4 +795,51 @@ TEST_CASE("PPC interpreter reports bounded instruction and data memory faults",
   auto null_fault = executor.Execute(context, nullptr, 0);
   REQUIRE(null_fault.status == rex::runtime::GuestExecutionStatus::kFault);
   REQUIRE(null_fault.instructions_executed == 0);
+}
+
+TEST_CASE("Runtime PPC decoder recognizes baseline floating-point operations",
+          "[system][interpreter]") {
+  REQUIRE(rex::runtime::DecodePpcInstruction(DForm(50, 3, 4, 8)).opcode ==
+          rex::runtime::PpcOpcode::kLoadFloatDouble);
+  REQUIRE(rex::runtime::DecodePpcInstruction(DForm(52, 3, 4, 8)).opcode ==
+          rex::runtime::PpcOpcode::kStoreFloatSingle);
+  REQUIRE(rex::runtime::DecodePpcInstruction(FloatXForm(63, 3, 4, 5, 21)).opcode ==
+          rex::runtime::PpcOpcode::kFloatAdd);
+  REQUIRE(rex::runtime::DecodePpcInstruction(FloatXForm(63, 3, 0, 5, 264)).opcode ==
+          rex::runtime::PpcOpcode::kFloatAbsolute);
+}
+
+TEST_CASE("PPC interpreter loads computes compares and stores floating-point values",
+          "[system][interpreter]") {
+  std::array<uint8_t, 256> memory{};
+  PPCContext context{};
+  rex::runtime::InterpreterGuestExecutor executor(9, memory.size());
+
+  StoreInstruction(memory.data(), 0, DForm(50, 1, 3, 0));
+  StoreInstruction(memory.data(), 4, DForm(48, 2, 3, 8));
+  StoreInstruction(memory.data(), 8, FloatXForm(63, 4, 1, 2, 21));
+  StoreInstruction(memory.data(), 12, FloatAForm(63, 5, 1, 0, 2, 25));
+  StoreInstruction(memory.data(), 16, FloatXForm(63, 6, 0, 5, 40));
+  StoreInstruction(memory.data(), 20, FloatXForm(63, 2 << 2, 4, 5, 0));
+  StoreInstruction(memory.data(), 24, DForm(54, 4, 3, 16));
+  StoreInstruction(memory.data(), 28, 0x4E800020);
+  context.r3.u64 = 0x80;
+  uint64_t double_bits = std::byteswap(std::bit_cast<uint64_t>(1.5));
+  std::memcpy(memory.data() + 0x80, &double_bits, sizeof(double_bits));
+  uint32_t float_bits = std::byteswap(std::bit_cast<uint32_t>(2.0f));
+  std::memcpy(memory.data() + 0x88, &float_bits, sizeof(float_bits));
+  context.lr = 0xBCBCBCBC;
+
+  const auto result = executor.Execute(context, memory.data(), 0);
+
+  REQUIRE(result.succeeded());
+  REQUIRE(context.f1.f64 == 1.5);
+  REQUIRE(context.f2.f64 == 2.0);
+  REQUIRE(context.f4.f64 == 3.5);
+  REQUIRE(context.f5.f64 == 3.0);
+  REQUIRE(context.f6.f64 == -3.0);
+  REQUIRE(context.cr2.gt == 1);
+  uint64_t stored_bits;
+  std::memcpy(&stored_bits, memory.data() + 0x90, sizeof(stored_bits));
+  REQUIRE(std::byteswap(stored_bits) == std::bit_cast<uint64_t>(3.5));
 }

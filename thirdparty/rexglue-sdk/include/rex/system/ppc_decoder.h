@@ -59,6 +59,10 @@ enum class PpcOpcode : uint8_t {
   kStoreDoublewordUpdate,
   kStoreDoublewordIndexed,
   kStoreDoublewordIndexedUpdate,
+  kLoadFloatSingle,
+  kLoadFloatDouble,
+  kStoreFloatSingle,
+  kStoreFloatDouble,
   kBranch,
   kBranchConditional,
   kBranchConditionalToLinkRegister,
@@ -120,6 +124,15 @@ enum class PpcOpcode : uint8_t {
   kShiftRightDoubleword,
   kShiftRightArithmeticWord,
   kShiftRightArithmeticWordImmediate,
+  kFloatMove,
+  kFloatAbsolute,
+  kFloatNegativeAbsolute,
+  kFloatNegate,
+  kFloatAdd,
+  kFloatSubtract,
+  kFloatMultiply,
+  kFloatDivide,
+  kFloatCompare,
 };
 
 struct DecodedPpcInstruction {

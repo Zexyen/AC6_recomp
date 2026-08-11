@@ -138,6 +138,66 @@ DecodedPpcInstruction DecodePpcInstruction(uint32_t raw) {
       result.opcode = PpcOpcode::kStoreHalfUpdate;
       result.immediate = SignExtend(raw & 0xFFFF, 16);
       break;
+    case 48:
+      result.opcode = PpcOpcode::kLoadFloatSingle;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 50:
+      result.opcode = PpcOpcode::kLoadFloatDouble;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 52:
+      result.opcode = PpcOpcode::kStoreFloatSingle;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 54:
+      result.opcode = PpcOpcode::kStoreFloatDouble;
+      result.immediate = SignExtend(raw & 0xFFFF, 16);
+      break;
+    case 59: {
+      const uint32_t xo = (raw >> 1) & 31;
+      switch (xo) {
+        case 18: result.opcode = PpcOpcode::kFloatDivide; break;
+        case 20: result.opcode = PpcOpcode::kFloatSubtract; break;
+        case 21: result.opcode = PpcOpcode::kFloatAdd; break;
+        case 25:
+          result.opcode = PpcOpcode::kFloatMultiply;
+          result.rb = static_cast<uint8_t>((raw >> 6) & 31);
+          break;
+        default: break;
+      }
+      result.is_64_bit = false;
+      break;
+    }
+    case 63: {
+      const uint32_t xo = (raw >> 1) & 0x3FF;
+      switch (xo) {
+        case 0:
+        case 32:
+          result.opcode = PpcOpcode::kFloatCompare;
+          result.cr_field = static_cast<uint8_t>((raw >> 23) & 7);
+          break;
+        case 40: result.opcode = PpcOpcode::kFloatNegate; break;
+        case 72: result.opcode = PpcOpcode::kFloatMove; break;
+        case 136: result.opcode = PpcOpcode::kFloatNegativeAbsolute; break;
+        case 264: result.opcode = PpcOpcode::kFloatAbsolute; break;
+        default: break;
+      }
+      if (result.opcode == PpcOpcode::kUnknown) {
+        switch ((raw >> 1) & 31) {
+          case 18: result.opcode = PpcOpcode::kFloatDivide; break;
+          case 20: result.opcode = PpcOpcode::kFloatSubtract; break;
+          case 21: result.opcode = PpcOpcode::kFloatAdd; break;
+          case 25:
+            result.opcode = PpcOpcode::kFloatMultiply;
+            result.rb = static_cast<uint8_t>((raw >> 6) & 31);
+            break;
+          default: break;
+        }
+      }
+      result.is_64_bit = true;
+      break;
+    }
     case 58:
       result.immediate = SignExtend(raw & 0xFFFC, 16);
       switch (raw & 3) {
