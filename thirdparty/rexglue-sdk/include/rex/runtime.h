@@ -55,6 +55,7 @@ struct RuntimeConfig {
   std::function<std::unique_ptr<system::IAudioSystem>(runtime::FunctionDispatcher*)> audio_factory;
   std::function<std::unique_ptr<system::IInputSystem>(bool tool_mode)> input_factory;
   std::function<void(system::KernelState*)> kernel_init;
+  std::string expected_xex_sha256;
   bool tool_mode = false;
 };
 
@@ -166,6 +167,7 @@ class Runtime {
   ui::Window* display_window_ = nullptr;
   ui::ImGuiDrawer* imgui_drawer_ = nullptr;
   bool tool_mode_ = false;
+  std::string expected_xex_sha256_;
 
   std::unique_ptr<memory::Memory> memory_;
   std::unique_ptr<runtime::FunctionDispatcher> function_dispatcher_;

@@ -42,9 +42,11 @@ catch_discover_tests(unit_tests
 add_executable(executor_unit_tests
     system/aot_guest_executor_test.cpp
     system/interpreter_guest_executor_test.cpp
+    system/xex_revision_test.cpp
     ${PROJECT_SOURCE_DIR}/src/system/aot_guest_executor.cpp
     ${PROJECT_SOURCE_DIR}/src/system/interpreter_guest_executor.cpp
     ${PROJECT_SOURCE_DIR}/src/system/ppc_decoder.cpp
+    ${PROJECT_SOURCE_DIR}/src/system/xex_revision.cpp
 )
 target_include_directories(executor_unit_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/include

@@ -44,6 +44,7 @@ set(REXSYSTEM_SOURCES
     aot_guest_executor.cpp
     interpreter_guest_executor.cpp
     ppc_decoder.cpp
+    xex_revision.cpp
     function_dispatcher.cpp
     thread.cpp
     thread_state.cpp

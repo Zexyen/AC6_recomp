@@ -11,6 +11,7 @@
 #include <rex/system/function_dispatcher.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/user_module.h>
+#include <rex/system/xex_revision.h>
 #include <rex/system/xex_module.h>
 #include <rex/system/xfile.h>
 #include <rex/system/xthread.h>
@@ -42,7 +43,8 @@ uint32_t UserModule::title_id() const {
   return 0;
 }
 
-X_STATUS UserModule::LoadFromFile(const std::string_view path) {
+X_STATUS UserModule::LoadFromFile(const std::string_view path,
+                                  std::string_view expected_sha256) {
   X_STATUS result = X_STATUS_UNSUCCESSFUL;
 
   // Resolve the file to open.
@@ -64,6 +66,17 @@ X_STATUS UserModule::LoadFromFile(const std::string_view path) {
       return result;
     }
 
+    if (!expected_sha256.empty()) {
+      const auto verification = runtime::VerifyXexRevision(
+          std::span<const uint8_t>(mmap->data(), mmap->size()),
+          expected_sha256);
+      if (!verification.succeeded()) {
+        REXSYS_ERROR("XEX revision verification failed: expected {}, actual {}",
+                     expected_sha256, verification.actual_sha256);
+        return verification.status;
+      }
+    }
+
     // Load the module.
     result = LoadFromMemory(mmap->data(), mmap->size());
   } else {
@@ -82,6 +95,18 @@ X_STATUS UserModule::LoadFromFile(const std::string_view path) {
     result = file->ReadSync(std::span<uint8_t>(buffer), 0, &bytes_read);
     if (XFAILED(result)) {
       return result;
+    }
+
+    if (!expected_sha256.empty()) {
+      const auto verification = runtime::VerifyXexRevision(
+          std::span<const uint8_t>(buffer.data(), bytes_read),
+          expected_sha256);
+      if (!verification.succeeded()) {
+        file->Destroy();
+        REXSYS_ERROR("XEX revision verification failed: expected {}, actual {}",
+                     expected_sha256, verification.actual_sha256);
+        return verification.status;
+      }
     }
 
     // Load the module.

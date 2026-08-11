@@ -60,6 +60,7 @@ X_STATUS Runtime::Setup(RuntimeConfig config) {
   }
 
   tool_mode_ = config.tool_mode;
+  expected_xex_sha256_ = std::move(config.expected_xex_sha256);
 
   // Create memory system first
   memory_ = std::make_unique<memory::Memory>();
@@ -289,8 +290,13 @@ bool Runtime::SetupVfs() {
 X_STATUS Runtime::LoadXexImage(const std::string_view module_path) {
   REXSYS_INFO("Loading XEX image: {}", std::string(module_path));
 
+  if (!tool_mode_ && expected_xex_sha256_.empty()) {
+    REXSYS_ERROR("Runtime::LoadXexImage: No required XEX SHA-256 configured");
+    return X_STATUS_INVALID_PARAMETER;
+  }
+
   auto module = system::object_ref<system::UserModule>(new system::UserModule(kernel_state_.get()));
-  X_STATUS status = module->LoadFromFile(module_path);
+  X_STATUS status = module->LoadFromFile(module_path, expected_xex_sha256_);
   if (XFAILED(status)) {
     REXSYS_ERROR("Runtime::LoadXexImage: Failed to load module, status {:08X}", status);
     return status;
