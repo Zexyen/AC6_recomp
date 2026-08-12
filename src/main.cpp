@@ -26,7 +26,9 @@ REXCVAR_DECLARE(bool, ac6_d3d_trace);
 REXCVAR_DECLARE(bool, ac6_backend_debug_swap);
 REXCVAR_DECLARE(bool, ac6_backend_log_signatures);
 REXCVAR_DECLARE(bool, ac6_backend_signature_diagnostics);
+#if defined(_WIN32)
 REXCVAR_DECLARE(bool, ac6_texture_swaps_dump_enabled);
+#endif
 
 #if REX_HAS_VULKAN
 #define AC6_DEFAULT_GRAPHICS_BACKEND "vulkan"
@@ -161,7 +163,9 @@ void EnforceAc6PerformanceModeOverrides() {
     REXCVAR_SET(ac6_backend_debug_swap, false);
     REXCVAR_SET(ac6_backend_log_signatures, false);
     REXCVAR_SET(ac6_backend_signature_diagnostics, false);
+#if defined(_WIN32)
     REXCVAR_SET(ac6_texture_swaps_dump_enabled, false);
+#endif
 }
 
 void ApplyAc6FixDefaults() {

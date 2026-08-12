@@ -34,7 +34,6 @@ set(AC6RECOMP_SOURCES
     src/ac6_pac_index.cpp
     src/d3d_hooks.cpp
     src/render_hooks.cpp
-    src/ac6_texture_overrides.cpp
     src/ac6_native_graphics.cpp
     src/ac6_native_graphics_overlay.cpp
     src/ac6_backend_fixes/ac6_backend_capture_bridge.cpp
@@ -45,12 +44,16 @@ set(AC6RECOMP_SOURCES
     src/ac6_backend_fixes/ac6_fps_physics_fix.cpp
     src/ac6_backend_fixes/ac6_fullres_effects.cpp
     src/ac6_backend_fixes/ac6_kbm_input.cpp
-    src/ac6_backend_fixes/ac6_widescreen.cpp
 )
 
 if(WIN32)
+    list(APPEND AC6RECOMP_SOURCES
+        src/ac6_texture_overrides.cpp
+        src/ac6_backend_fixes/ac6_widescreen.cpp
+    )
     add_executable(ac6recomp WIN32 ${AC6RECOMP_SOURCES})
 else()
+    list(APPEND AC6RECOMP_SOURCES src/ac6_backend_fixes/ac6_widescreen_stub.cpp)
     add_executable(ac6recomp ${AC6RECOMP_SOURCES})
 endif()
 
