@@ -25,6 +25,11 @@ namespace rex::audio {
 
 using stream::BitStream;
 
+// These static const members are odr-used by std::max and logging calls, so
+// they require storage definitions because they are not inline or constexpr.
+const uint32_t XmaContext::kBitsPerPacketHeader;
+const uint32_t XmaContext::kOutputMaxSizeBytes;
+
 namespace {
 
 bool IsDeepTraceEnabled() {
